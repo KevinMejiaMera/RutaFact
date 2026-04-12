@@ -1,0 +1,1 @@
+default_app_config = 'apps.custom_admin.apps.CustomAdminConfig'

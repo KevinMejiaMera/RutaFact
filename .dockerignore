@@ -1,0 +1,7 @@
+storage/
+mediafiles/
+staticfiles/
+docker-compose.yml
+.env
+
+flutter_app/

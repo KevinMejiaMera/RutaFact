@@ -1,0 +1,86 @@
+# ============================================
+# REQUIREMENTS.TXT PARA RutaFact_SRI CON OAUTH
+# ============================================
+gunicorn
+# Django Core
+Django
+asgiref
+sqlparse
+tzdata
+
+# Database
+psycopg2
+
+# Authentication & OAuth
+django-allauth
+PyJWT
+oauthlib
+requests-oauthlib
+
+# API & REST
+djangorestframework
+django-cors-headers
+django-filter
+
+# Forms & UI removidos
+# django-crispy-forms
+# crispy-bootstrap5
+
+# Configuration
+python-decouple
+
+# Utilities
+Pillow
+requests
+python-dateutil
+
+
+# Development (opcional)
+django-debug-toolbar
+django-extensions
+
+# Security & Validation
+cryptography>=42.0.0
+certifi
+
+# File processing
+openpyxl
+reportlab
+
+# XML processing y firma XAdES-BES para SRI Ecuador
+# ✅ 100% Python — NO requiere Java, ni openssl externo, ni subprocess
+# lxml: parsing y canonicalización C14N
+# cryptography: carga de P12, RSA-SHA1, generación de firma
+lxml
+xmltodict
+
+# Celery & Redis - CORREGIDO
+celery[redis]
+redis
+django-redis
+django-celery-beat
+django-celery-results
+
+# Django Channels for WebSockets
+channels
+channels-redis
+daphne
+
+# QR Code generation
+qrcode
+
+# SOAP client para SRI
+zeep
+
+# File type detection - CORREGIDO
+python-magic
+
+# Rate limiting (opcional)
+# django-ratelimit
+
+whitenoise
+
+sendgrid==6.11.0
+flower==1.2.0
+
+pyOpenSSL>=23.2.1

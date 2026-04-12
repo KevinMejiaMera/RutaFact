@@ -1,0 +1,148 @@
+services:
+  rutafact-db:
+    image: postgres:14
+    container_name: RutaFact_db
+    environment:
+      POSTGRES_DB: rutafact_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dbrutafact3425
+    volumes:
+      - rutafact_db_data:/var/lib/postgresql/data/
+    restart: unless-stopped
+    networks:
+      - general-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  rutafact-redis:
+    container_name: RutaFact_redis
+    image: redis:7-alpine
+    command: redis-server --requirepass Redis2026Secure!
+    restart: unless-stopped
+    networks:
+      - general-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  backend:
+    build: .
+    image: rutafact_app:latest
+    container_name: RutaFact_backend
+    command: sh -c "python manage.py migrate --noinput && daphne -b 0.0.0.0 -p 8000 rutafact.asgi:application"
+    volumes:
+      - ./backend:/app
+      - rutafact_static:/app/staticfiles
+      - rutafact_media:/app/mediafiles
+    ports:
+      - "8000:8000"
+    depends_on:
+      - rutafact-db
+      - rutafact-redis
+    environment:
+      - TZ=America/Guayaquil
+      - REDIS_PASSWORD=Redis2026Secure!
+      - REDIS_HOST=rutafact-redis
+      - DB_HOST=rutafact-db
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - general-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  celery:
+    build: .
+    image: rutafact_app:latest
+    container_name: RutaFact_celery
+    command: celery -A rutafact worker --loglevel=info --concurrency=1 -Q celery,sri_processing,sri_authorization,sri_maintenance
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - rutafact-db
+      - rutafact-redis
+    environment:
+      - TZ=America/Guayaquil
+      - REDIS_PASSWORD=Redis2026Secure!
+      - REDIS_HOST=rutafact-redis
+      - DB_HOST=rutafact-db
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - general-net
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+        reservations:
+          memory: 128M
+
+  celery-beat:
+    build: .
+    image: rutafact_app:latest
+    container_name: RutaFact_beat
+    command: celery -A rutafact beat --loglevel=info --scheduler=django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - rutafact-db
+      - rutafact-redis
+      - celery
+    environment:
+      - TZ=America/Guayaquil
+      - REDIS_PASSWORD=Redis2026Secure!
+      - REDIS_HOST=rutafact-redis
+      - DB_HOST=rutafact-db
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - general-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  flower:
+    build: .
+    image: rutafact_app:latest
+    container_name: RutaFact_flower
+    command: celery -A rutafact flower --port=5555 --broker_api=http://guest:guest@rutafact-redis:6379/0
+    volumes:
+      - ./backend:/app
+    ports:
+      - "5555:5555"
+    depends_on:
+      - celery
+    environment:
+      - TZ=America/Guayaquil
+      - REDIS_PASSWORD=Redis2026Secure!
+      - REDIS_HOST=rutafact-redis
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - general-net
+
+volumes:
+  rutafact_db_data:
+  rutafact_static:
+  rutafact_media:
+
+networks:
+  general-net:
+    external: true
+

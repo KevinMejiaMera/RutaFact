@@ -1,0 +1,273 @@
+
+# Variables de entorno con credenciales
+.env
+.env.local
+.env.prod
+.env.production
+.env.staging
+.env.backup
+
+# Certificados de firmas electrónicas (CRÍTICO - NUNCA SUBIR)
+storage/certificates/
+!storage/certificates/.gitkeep
+*.p12
+*.pfx
+*.key
+*.pem
+*.crt
+*.cer
+
+# Archivos de llaves y credenciales
+*.key
+*_key
+*_private*
+*_secret*
+credentials.json
+secrets.json
+
+# =============================================================================
+# ARCHIVOS DE DATOS Y ALMACENAMIENTO
+# =============================================================================
+
+# Logs del sistema
+storage/
+storage/logs/
+logs/
+*.log
+
+# Backups de base de datos
+storage/backups/
+backups/
+*.sql
+*.dump
+*.backup
+
+# Facturas y documentos generados
+storage/invoices/
+invoices/
+*.pdf
+*.xml
+
+# Archivos temporales
+storage/temp/
+temp/
+tmp/
+
+# =============================================================================
+# PYTHON Y DJANGO
+# =============================================================================
+
+# Bytecode compilado de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de distribución / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask
+instance/
+.webassets-cache
+
+# Scrapy
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# =============================================================================
+# DOCKER
+# =============================================================================
+
+# Docker volumes y datos
+docker-compose.override.yml
+.docker/
+
+# =============================================================================
+# EDITORES E IDEs
+# =============================================================================
+
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# PyCharm
+.idea/
+*.swp
+*.swo
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# =============================================================================
+# SISTEMA OPERATIVO
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# =============================================================================
+# OTROS ARCHIVOS COMUNES
+# =============================================================================
+
+# Node modules (si usas algún frontend tool)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sass
+.sass-cache/
+
+# Compression
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+
+!storage/.gitkeep
+!storage/certificates/.gitkeep
+!storage/backups/.gitkeep
+!storage/logs/.gitkeep
+!storage/invoices/.gitkeep
+!storage/invoices/pdf/.gitkeep
+!storage/invoices/xml/.gitkeep
+!storage/invoices/sent/.gitkeep
