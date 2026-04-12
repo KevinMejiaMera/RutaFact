@@ -16,52 +16,6 @@ import datetime
 from .models import UserCompanyAssignment, AdminNotification
 
 
-@login_required
-def waiting_room_view(request):
-    """Vista de sala de espera para usuarios no asignados"""
-    
-    # Si es admin/staff, redirigir al admin
-    if request.user.is_staff or request.user.is_superuser:
-        return redirect('admin:index')
-    
-    # Obtener o crear asignación del usuario
-    assignment, created = UserCompanyAssignment.objects.get_or_create(
-        user=request.user,
-        defaults={'status': 'waiting'}
-    )
-    
-    # Si ya está asignado, redirigir al dashboard
-    if assignment.is_assigned():
-        return redirect('core:dashboard')
-    
-    # Si está rechazado, mostrar mensaje
-    if assignment.status == 'rejected':
-        context = {
-            'status': 'rejected',
-            'message': 'Tu solicitud de acceso ha sido rechazada.',
-            'notes': assignment.notes
-        }
-        return render(request, 'users/waiting_room.html', context)
-    
-    # Si está suspendido
-    if assignment.status == 'suspended':
-        context = {
-            'status': 'suspended',
-            'message': 'Tu cuenta ha sido suspendida.',
-            'notes': assignment.notes
-        }
-        return render(request, 'users/waiting_room.html', context)
-    
-    # Sala de espera normal
-    context = {
-        'status': 'waiting',
-        'message': 'Tu solicitud está siendo procesada.',
-        'assignment': assignment,
-        'user': request.user
-    }
-    
-    return render(request, 'users/waiting_room.html', context)
-
 
 @login_required
 @require_http_methods(["GET"])

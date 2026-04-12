@@ -10,9 +10,6 @@ from . import views
 app_name = 'users'
 
 urlpatterns = [
-    # Sala de espera
-    path('waiting-room/', views.waiting_room_view, name='waiting_room'),
-    
     # API para verificar estado de asignación
     path('api/check-assignment/', views.check_assignment_status, name='check_assignment'),
 ]

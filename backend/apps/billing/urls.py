@@ -10,39 +10,7 @@ from . import views
 app_name = 'billing'
 
 urlpatterns = [
-    # ==========================================
-    # DASHBOARD PRINCIPAL DE FACTURACIÓN
-    # ==========================================
-    path('', views.billing_dashboard_view, name='dashboard'),
-    
-    # ==========================================
-    # GESTIÓN DE PLANES
-    # ==========================================
-    
-    # Listado de planes disponibles
-    path('plans/', views.plans_list_view, name='plans_list'),
-    
-    # Comprar un plan específico
-    path('plans/<int:plan_id>/buy/', views.plan_purchase_view, name='plan_purchase'),
-    
-    # Confirmación de compra exitosa
-    path('purchase/success/<uuid:purchase_id>/', views.purchase_success_view, name='purchase_success'),
-    
-    # ==========================================
-    # HISTORIAL Y CONSULTAS
-    # ==========================================
-    
-    # Historial de compras
-    path('purchases/', views.purchase_history_view, name='purchase_history'),
-    
-    # Historial de consumo de facturas
-    path('consumption/', views.consumption_history_view, name='consumption_history'),
-    
-    # ==========================================
-    # APIs AJAX
-    # ==========================================
-    
-    # Estado de facturación para AJAX
+    # Estado de facturación para API (Usado por Flutter)
     path('api/status/', views.billing_api_status, name='api_status'),
 ]
 
