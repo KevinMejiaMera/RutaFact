@@ -34,14 +34,14 @@ class UserAdmin(BaseUserAdmin):
     
     # Campos que se muestran en la lista
     list_display = (
-        'email', 'get_full_name_display', 'company', 
+        'email', 'get_full_name_display', 'role', 'company', 
         'is_company_admin', 'is_staff', 'is_active', 
         'date_joined', 'profile_picture_display', 'get_assignment_status'
     )
     
     # Campos por los que se puede filtrar
     list_filter = (
-        'is_staff', 'is_superuser', 'is_active', 
+        'role', 'is_staff', 'is_superuser', 'is_active', 
         'is_company_admin', 'company', 'date_joined'
     )
     
@@ -60,7 +60,7 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('first_name', 'last_name', 'phone', 'profile_picture')
         }),
         (_('Company info'), {
-            'fields': ('company', 'is_company_admin'),
+            'fields': ('company', 'is_company_admin', 'role'),
             'classes': ('collapse',)
         }),
         (_('Permissions'), {

@@ -79,6 +79,7 @@ LOCAL_APPS = [
     'apps.sri_integration',
     'apps.api',
     'apps.billing',
+    'apps.logistics',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

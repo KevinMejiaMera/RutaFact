@@ -102,11 +102,24 @@ class User(AbstractUser):
         ('rejected', 'Rechazado'),
     ]
     
+    USER_ROLE_CHOICES = [
+        ('admin', 'Administrador'),
+        ('dispatcher', 'Despachador'),
+        ('client', 'Cliente'),
+    ]
+    
     user_status = models.CharField(
         max_length=20,
         choices=USER_STATUS_CHOICES,
         default='waiting',
         verbose_name='Estado del Usuario'
+    )
+    
+    role = models.CharField(
+        max_length=20,
+        choices=USER_ROLE_CHOICES,
+        default='client',
+        verbose_name='Rol del Usuario'
     )
     
     approved_by = models.ForeignKey(
@@ -254,7 +267,7 @@ class UserCompanyAssignment(models.Model):
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default='waiting',
+        default='assigned',
         verbose_name=_('Estado')
     )
     

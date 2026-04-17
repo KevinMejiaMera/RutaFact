@@ -25,6 +25,7 @@ except ImportError:
 
 # 🔥🔥🔥 IMPORTAR VIEWSET NUCLEAR CORRECTO 🔥🔥🔥
 from apps.api.views.company_views import CompanyViewSet as NuclearCompanyViewSet
+from apps.api.views.logistics_views import VehicleViewSet, RouteViewSet, RouteStopViewSet
 
 # 🔑🔑🔑 IMPORTAR AUTH VIEWS PARA TOKENS 🔑🔑🔑
 from apps.api.views.auth_views import token_login, token_logout, token_profile, auth_status, token_register
@@ -56,6 +57,9 @@ def api_root(request):
         'customers': '/api/customers/',
         'products': '/api/products/',
         'status': '/api/status/',
+        'vehicles': '/api/vehicles/',
+        'routes': '/api/routes/',
+        'route_stops': '/api/route-stops/',
         # Auth endpoints
         'auth_login': '/api/auth/login/',
         'auth_logout': '/api/auth/logout/',
@@ -290,6 +294,9 @@ router = DefaultRouter()
 router.register(r'companies', NuclearCompanyViewSet, basename='company')
 router.register(r'customers', CustomerViewSet, basename='customer')
 router.register(r'products', ProductViewSet, basename='product')
+router.register(r'vehicles', VehicleViewSet, basename='vehicle')
+router.register(r'routes', RouteViewSet, basename='route')
+router.register(r'route-stops', RouteStopViewSet, basename='route-stop')
 
 # Registrar ViewSets SRI si están disponibles
 if SRI_AVAILABLE:

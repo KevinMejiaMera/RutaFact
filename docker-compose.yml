@@ -136,6 +136,15 @@ services:
     restart: unless-stopped
     networks:
       - general-net
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: RutaFact_tunnel
+    command: tunnel --url http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - general-net
 
 volumes:
   rutafact_db_data:
@@ -144,5 +153,5 @@ volumes:
 
 networks:
   general-net:
-    external: true
+    driver: bridge
 

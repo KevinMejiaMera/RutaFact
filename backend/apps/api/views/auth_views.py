@@ -107,7 +107,8 @@ def token_login(request):
             'email': user.email,
             'first_name': user.first_name,
             'last_name': user.last_name,
-            'full_name': f"{user.first_name} {user.last_name}".strip()
+            'full_name': f"{user.first_name} {user.last_name}".strip(),
+            'role': user.role
         },
         'recommendations': {
             'use_company_tokens': True,
@@ -174,7 +175,8 @@ def token_profile(request):
             'user': {
                 'id': request.user.id,
                 'email': request.user.email,
-                'full_name': f"{request.user.first_name} {request.user.last_name}".strip()
+                'full_name': f"{request.user.first_name} {request.user.last_name}".strip(),
+                'role': request.user.role
             },
             'companies': [
                 {
@@ -224,7 +226,9 @@ def auth_status(request):
                 return Response({
                     'authenticated': True,
                     'token_type': 'user',
-                    'user_email': user.email
+                    'user_email': user.email,
+                    'user_id': user.id,
+                    'role': user.role
                 })
         else:
             return Response({
@@ -281,9 +285,9 @@ def token_register(request):
         last_name=last_name
     )
     
-    # Crear asignación (sala de espera)
+    # Crear asignación (APROBADO AUTOMÁTICAMENTE)
     from apps.users.models import UserCompanyAssignment, AdminNotification
-    UserCompanyAssignment.objects.create(user=user, status='waiting')
+    UserCompanyAssignment.objects.create(user=user, status='assigned')
     
     # Notificar a los admins
     try:
@@ -296,12 +300,13 @@ def token_register(request):
     
     return Response({
         'success': True,
-        'message': 'User registered successfully. Waiting for admin approval.',
+        'message': 'User registered successfully. Welcome to RutaFact!',
         'token': token.key,
         'user': {
             'id': user.id,
             'email': user.email,
             'first_name': user.first_name,
-            'last_name': user.last_name
+            'last_name': user.last_name,
+            'role': user.role
         }
     }, status=status.HTTP_201_CREATED)

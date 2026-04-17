@@ -903,6 +903,61 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             )
         return super().handle_exception(exc)
     
+    @action(detail=False, methods=['get'])
+    @require_user_company_access()
+    @audit_api_action(action_type='DASHBOARD_STATS')
+    def dashboard(self, request):
+        """
+        Endpoint de estadísticas para el dashboard principal.
+        """
+        company = request.validated_company
+        
+        # Filtrar documentos por empresa
+        documents = ElectronicDocument.objects.filter(company=company)
+        
+        # Estadísticas de estados
+        total_docs = documents.count()
+        authorized_docs = documents.filter(status='AUTHORIZED').count()
+        pending_docs = documents.filter(status__in=['GENERATED', 'SIGNED', 'SENT']).count()
+        error_docs = documents.filter(status__in=['FAILED', 'REJECTED']).count()
+        
+        # Totales monetarios (solo autorizados)
+        from django.db.models import Sum
+        totals = documents.filter(status='AUTHORIZED').aggregate(
+            total_sales=Sum('total_amount')
+        )
+        
+        # Documentos recientes
+        recent_docs = documents.order_by('-created_at')[:5]
+        recent_data = []
+        for doc in recent_docs:
+            recent_data.append({
+                'id': doc.id,
+                'number': doc.document_number,
+                'customer': doc.customer_name,
+                'total': str(doc.total_amount),
+                'status': doc.status,
+                'status_display': doc.get_status_display(),
+                'date': doc.issue_date.isoformat() if doc.issue_date else None,
+                'created_at': doc.created_at.isoformat()
+            })
+            
+        return Response({
+            'company': {
+                'id': company.id,
+                'name': company.business_name,
+                'ruc': company.ruc
+            },
+            'stats': {
+                'total_documents': total_docs,
+                'authorized': authorized_docs,
+                'pending': pending_docs,
+                'errors': error_docs,
+                'total_sales': str(totals['total_sales'] or '0.00'),
+            },
+            'recent_documents': recent_data
+        })
+    
     # ========== NUEVO: ENDPOINT DE VALIDACIÓN PARA TOKEN VSR ==========
     
     @action(detail=False, methods=['post', 'get'])
