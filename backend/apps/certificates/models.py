@@ -108,6 +108,22 @@ class DigitalCertificate(BaseModel):
         help_text=_('Certificate serial number')
     )
     
+    extracted_ruc = models.CharField(
+        _('extracted RUC'),
+        max_length=13,
+        blank=True,
+        null=True,
+        help_text=_('RUC extracted from certificate')
+    )
+    
+    extracted_name = models.CharField(
+        _('extracted name'),
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text=_('Name or Business Name extracted from certificate')
+    )
+    
     valid_from = models.DateTimeField(
         _('valid from'),
         help_text=_('Certificate validity start date')
@@ -379,22 +395,52 @@ class DigitalCertificate(BaseModel):
             subject = certificate.subject
             issuer = certificate.issuer
             
+            # 🕵️ BUSCAR RUC Y NOMBRE (Ecuador Específico)
+            from .utils import extract_ecuador_ruc
+            ruc_found, name_found = extract_ecuador_ruc(certificate)
+            
             # Formatear nombres de forma legible
             subject_parts = []
-            issuer_parts = []
-            
             for attribute in subject:
                 subject_parts.append(f"{attribute.oid._name}={attribute.value}")
             
-            for attribute in issuer:
-                issuer_parts.append(f"{attribute.oid._name}={attribute.value}")
-            
             # Actualizar campos con información REAL
-            self.subject_name = ", ".join(subject_parts)
-            self.issuer_name = ", ".join(issuer_parts)
+            self.subject_name = name_found or ", ".join(subject_parts)
+            self.extracted_ruc = ruc_found
+            self.extracted_name = name_found
+            from django.utils.timezone import make_aware
+            
+            # Asegurar que las fechas del certificado sean aware
+            v_from = certificate.not_valid_before
+            v_to = certificate.not_valid_after
+            
+            if v_from.tzinfo is None:
+                v_from = make_aware(v_from)
+            if v_to.tzinfo is None:
+                v_to = make_aware(v_to)
+                
+            self.valid_from = v_from
+            self.valid_to = v_to
             self.serial_number = str(certificate.serial_number)
-            self.valid_from = certificate.not_valid_before
-            self.valid_to = certificate.not_valid_after
+            
+            # ✅ ACTUALIZACIÓN AUTOMÁTICA DE LA EMPRESA
+            # Si encontramos datos reales en la firma, actualizamos la empresa para que coincidan
+            if ruc_found and self.company:
+                logger.info(f"🔎 Sincronizando Empresa con datos de firma: {ruc_found} - {name_found}")
+                
+                # Solo actualizar si es diferente o la empresa tiene el RUC genérico/placeholder
+                is_placeholder = self.company.ruc in ['0000000000001', '1234567890001']
+                
+                if is_placeholder or self.company.ruc != ruc_found:
+                    self.company.ruc = ruc_found
+                    if name_found:
+                        self.company.business_name = name_found
+                        if not self.company.trade_name:
+                            self.company.trade_name = name_found
+                    
+                    # Guardar empresa (esto disparará a su vez la sincronización con SRIConfig)
+                    self.company.save()
+                    logger.info(f"✅ Datos de Empresa actualizados desde la firma digital")
             
             # Calcular fingerprint REAL
             self.fingerprint = hashlib.sha256(
@@ -403,10 +449,8 @@ class DigitalCertificate(BaseModel):
             
             # Determinar estado basado en fechas
             now = timezone.now()
-            if certificate.not_valid_after < now:
+            if v_to < now:
                 self.status = 'EXPIRED'
-            elif False:  # FIXED: no marcar INACTIVE por fecha futura
-                self.status = 'INACTIVE'
             else:
                 self.status = 'ACTIVE'
             

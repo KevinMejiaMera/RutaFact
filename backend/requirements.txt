@@ -21,6 +21,7 @@ requests-oauthlib
 djangorestframework
 django-cors-headers
 django-filter
+djangorestframework-simplejwt
 
 # Forms & UI removidos
 # django-crispy-forms

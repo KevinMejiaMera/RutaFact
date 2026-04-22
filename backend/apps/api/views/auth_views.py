@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from apps.companies.models import CompanyAPIToken, Company
 from apps.api.user_company_helper import get_user_companies_exact
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 @api_view(['POST'])
@@ -97,10 +98,17 @@ def token_login(request):
         if recommended_company is None:
             recommended_company = company
     
+    # Generar Token JWT (Larga duración: 2 días configurable en settings)
+    refresh = RefreshToken.for_user(user)
+    
     return Response({
         'success': True,
         'message': 'Login successful',
-        'user_token': user_token.key,
+        'user_token': str(refresh.access_token), # Ahora devolvemos el JWT aquí para compatibilidad
+        'jwt_tokens': {
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+        },
         'company_tokens': company_tokens,
         'user': {
             'id': user.id,
@@ -197,50 +205,40 @@ def token_profile(request):
 @permission_classes([AllowAny])
 def auth_status(request):
     """
-    Verificar estado de autenticación sin requerir login
+    Verificar estado de autenticación de forma genérica
     """
-    auth_header = request.META.get('HTTP_AUTHORIZATION')
-    
-    if not auth_header:
-        return Response({
-            'authenticated': False,
-            'message': 'No authorization header provided'
-        })
-    
-    try:
-        from apps.api.authentication import DualTokenAuthentication
-        auth = DualTokenAuthentication()
-        user_auth = auth.authenticate(request)
+    # Si la request ya tiene usuario autenticado (gracias al middleware/clases de auth)
+    if request.user and request.user.is_authenticated:
+        user = request.user
+        from apps.api.authentication import VirtualCompanyUser
         
-        if user_auth:
-            user, token = user_auth
-            from apps.api.authentication import VirtualCompanyUser
-            
-            if isinstance(user, VirtualCompanyUser):
-                return Response({
-                    'authenticated': True,
-                    'token_type': 'company',
-                    'company_name': user.company.business_name
-                })
-            else:
-                return Response({
-                    'authenticated': True,
-                    'token_type': 'user',
-                    'user_email': user.email,
-                    'user_id': user.id,
-                    'role': user.role
-                })
+        if isinstance(user, VirtualCompanyUser):
+            return Response({
+                'authenticated': True,
+                'token_type': 'company',
+                'company_name': user.company.business_name
+            })
         else:
             return Response({
-                'authenticated': False,
-                'message': 'Invalid token'
+                'authenticated': True,
+                'token_type': 'user',
+                'user_email': user.email,
+                'user_id': user.id,
+                'role': user.role,
+                'user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'full_name': f"{user.first_name} {user.last_name}".strip(),
+                    'role': user.role
+                }
             })
-    except Exception as e:
-        return Response({
-            'authenticated': False,
-            'message': 'Authentication error',
-            'error': str(e)
-        })
+    
+    return Response({
+        'authenticated': False,
+        'message': 'Invalid or expired token'
+    })
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def token_register(request):
@@ -298,10 +296,17 @@ def token_register(request):
     # Crear token
     token, created = Token.objects.get_or_create(user=user)
     
+    # Generar Token JWT
+    refresh = RefreshToken.for_user(user)
+    
     return Response({
         'success': True,
         'message': 'User registered successfully. Welcome to RutaFact!',
-        'token': token.key,
+        'token': str(refresh.access_token),
+        'jwt_tokens': {
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+        },
         'user': {
             'id': user.id,
             'email': user.email,

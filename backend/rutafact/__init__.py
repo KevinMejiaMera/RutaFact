@@ -12,4 +12,4 @@ from .celery import app as celery_app
 __all__ = ('celery_app',)
 
 # Mensaje de inicialización
-print("🚀 rutafact initialized with Celery support")
+print("rutafact initialized with Celery support")

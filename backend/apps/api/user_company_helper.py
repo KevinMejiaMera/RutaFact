@@ -11,54 +11,20 @@ logger = logging.getLogger(__name__)
 
 def get_user_companies_exact(user):
     """
-    Función ESPECÍFICA CORREGIDA para tu modelo de User-Company
+    LÓGICA SIMPLIFICADA: Siempre devuelve la empresa matriz única.
     """
     if not user or not user.is_authenticated:
-        logger.warning("❌ User not authenticated")
         return Company.objects.none()
     
-    # ✅ NUEVO: Detectar VirtualCompanyUser (tokens VSR de empresa)
-    from apps.api.authentication import VirtualCompanyUser
-    if isinstance(user, VirtualCompanyUser):
-        # VirtualCompanyUser ya tiene su empresa asignada directamente
-        logger.info(f"✅ VirtualCompanyUser accessing company {user.company.id}")
-        return Company.objects.filter(id=user.company.id, is_active=True)
+    # Si es Superusuario o usuario normal, todos trabajan sobre la misma matriz
+    # Buscamos la primera empresa activa (la única que debería existir)
+    matriz = Company.objects.filter(is_active=True).first()
     
-    if user.is_superuser:
-        logger.info(f"✅ Superuser {user.username} accessing all companies")
-        return Company.objects.filter(is_active=True)
+    if matriz:
+        logger.info(f"✅ Sistema Matriz: Usuario {user.username} operando en {matriz.business_name}")
+        return Company.objects.filter(id=matriz.id)
     
-    # Método 1: UserCompanyAssignment (CORREGIDO)
-    try:
-        from apps.users.models import UserCompanyAssignment
-        assignment = UserCompanyAssignment.objects.get(user=user)
-        
-        if assignment.is_assigned():
-            companies = assignment.get_assigned_companies().filter(is_active=True)
-            logger.info(f"✅ Assignment method: User {user.username} has {companies.count()} assigned companies")
-            return companies
-        else:
-            logger.warning(f"❌ User {user.username} is in waiting room - status: {assignment.status}")
-            return Company.objects.none()
-            
-    except ImportError:
-        logger.debug("UserCompanyAssignment not available, using direct relationship")
-    except UserCompanyAssignment.DoesNotExist:
-        logger.debug(f"No UserCompanyAssignment found for user {user.username}, using direct relationship")
-    except Exception as e:
-        logger.error(f"Error with UserCompanyAssignment for user {user.username}: {e}")
-    
-    # Método 2: Relación directa User.company (ForeignKey)
-    try:
-        if hasattr(user, 'company') and user.company and user.company.is_active:
-            companies = Company.objects.filter(id=user.company.id, is_active=True)
-            logger.info(f"✅ Direct method: User {user.username} has company {user.company.id}")
-            return companies
-    except Exception as e:
-        logger.debug(f"Direct company method failed for user {user.username}: {e}")
-    
-    # Si no tiene empresa asignada
-    logger.warning(f"❌ User {user.username} has no company assigned")
+    logger.warning("⚠️ No se encontró ninguna empresa matriz activa en el sistema")
     return Company.objects.none()
 
 

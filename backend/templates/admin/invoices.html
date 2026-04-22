@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block page_title %}Listado de Comprobantes{% endblock %}
+
+{% block extra_css %}
+<style>
+    .invoices-container {
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    .status-authorized { background: rgba(76, 175, 80, 0.1); color: #4CAF50; }
+    .status-rejected { background: rgba(244, 67, 54, 0.1); color: #f44336; }
+    .status-sent { background: rgba(33, 150, 243, 0.1); color: #2196F3; }
+    .status-draft { background: rgba(158, 158, 158, 0.1); color: #9E9E9E; }
+
+    .invoice-table-card {
+        background: var(--bg-card);
+        border-radius: 24px;
+        border: 1px solid var(--border);
+        overflow: hidden;
+    }
+
+    .table-header {
+        padding: 25px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    th {
+        text-align: left;
+        padding: 15px 25px;
+        color: var(--text-dim);
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        background: rgba(255,255,255,0.02);
+    }
+
+    td {
+        padding: 20px 25px;
+        border-bottom: 1px solid var(--border);
+        font-size: 14px;
+    }
+
+    .vendedor-badge {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-main);
+        font-weight: 500;
+    }
+
+    .vendedor-avatar {
+        width: 25px;
+        height: 25px;
+        background: var(--primary);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: bold;
+    }
+
+    .btn-download {
+        color: var(--text-dim);
+        text-decoration: none;
+        padding: 5px;
+        transition: 0.3s;
+    }
+
+    .btn-download:hover {
+        color: var(--primary);
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="invoices-container">
+    <div class="invoice-table-card">
+        <div class="table-header">
+            <div>
+                <h3 style="font-size: 18px; color: white;">Todos los Comprobantes</h3>
+                <p style="color: var(--text-dim); font-size: 14px; margin-top: 5px;">Historial completo de documentos emitidos por la matriz</p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-primary" style="background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: white;" onclick="window.location.reload()">
+                    <i class="fas fa-sync-alt"></i> Actualizar
+                </button>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha / Número</th>
+                    <th>Cliente</th>
+                    <th>Total</th>
+                    <th>Emitido por (Vendedor)</th>
+                    <th>Estado SRI</th>
+                    <th style="text-align: right;">Opciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for invoice in invoices %}
+                <tr>
+                    <td>
+                        <div style="font-weight: 600; color: white;">{{ invoice.document_number }}</div>
+                        <div style="font-size: 12px; color: var(--text-dim);">{{ invoice.issue_date|date:"d M, Y" }}</div>
+                    </td>
+                    <td>
+                        <div style="font-weight: 500; color: white;">{{ invoice.customer_name }}</div>
+                        <div style="font-size: 12px; color: var(--text-dim);">{{ invoice.customer_identification }}</div>
+                    </td>
+                    <td>
+                        <div style="font-weight: 700; color: var(--primary);">${{ invoice.total_amount }}</div>
+                    </td>
+                    <td>
+                        <div class="vendedor-badge">
+                            <div class="vendedor-avatar">
+                                {{ invoice.created_by.first_name|slice:":1"|default:invoice.created_by.email|slice:":1"|upper }}
+                            </div>
+                            <div>
+                                <div style="font-size: 13px;">{{ invoice.created_by.get_full_name|default:invoice.created_by.email }}</div>
+                                <div style="font-size: 11px; color: var(--text-dim);">Vendedor Autorizado</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge {% if invoice.status == 'AUTHORIZED' %}status-authorized{% elif invoice.status == 'REJECTED' %}status-rejected{% elif invoice.status == 'SENT' %}status-sent{% else %}status-draft{% endif %}">
+                            {{ invoice.get_status_display }}
+                        </span>
+                    </td>
+                    <td style="text-align: right;">
+                        <div style="display: flex; justify-content: flex-end; gap: 15px;">
+                            {% if invoice.pdf_file %}
+                            <a href="{{ invoice.pdf_file.url }}" class="btn-download" title="Descargar PDF" target="_blank">
+                                <i class="fas fa-file-pdf"></i>
+                            </a>
+                            {% endif %}
+                            {% if invoice.xml_file %}
+                            <a href="{{ invoice.xml_file.url }}" class="btn-download" title="Descargar XML" target="_blank">
+                                <i class="fas fa-file-code"></i>
+                            </a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 80px;">
+                        <i class="fas fa-file-invoice fa-4x" style="margin-bottom: 20px; opacity: 0.1;"></i>
+                        <h4 style="color: var(--text-dim);">No hay comprobantes emitidos</h4>
+                        <p style="color: var(--text-dim); font-size: 14px; margin-top: 10px;">Las facturas que emitas desde la App aparecerán aquí automáticamente.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

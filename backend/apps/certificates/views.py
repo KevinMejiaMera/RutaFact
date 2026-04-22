@@ -1,14 +1,13 @@
-# -*- coding: utf-8 -*-
-"""
-Views for certificates app - CON CARGA REAL DE P12
-"""
-
+import logging
 from rest_framework import permissions, viewsets, status, filters
+
+logger = logging.getLogger(__name__)
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from django_filters.rest_framework import DjangoFilterBackend
 import os
+import hashlib
 from django.conf import settings
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12
@@ -39,51 +38,99 @@ class DigitalCertificateViewSet(viewsets.ModelViewSet):
                 return Response({'error': 'Certificate password is required'}, 
                               status=status.HTTP_400_BAD_REQUEST)
                               
-            if not company_id:
-                return Response({'error': 'Company ID is required'}, 
-                              status=status.HTTP_400_BAD_REQUEST)
+            # Nota: company_id ahora es opcional para permitir auto-creación de Matriz
+            pass
             
             # Validar extensión de archivo
-            if not certificate_file.name.lower().endswith('.p12'):
-                return Response({'error': 'File must be a .p12 certificate'}, 
+            allowed_extensions = ['.p12', '.pfx']
+            if not any(certificate_file.name.lower().endswith(ext) for ext in allowed_extensions):
+                return Response({'error': f'File must be one of: {", ".join(allowed_extensions)}'}, 
                               status=status.HTTP_400_BAD_REQUEST)
             
             # Leer archivo
             cert_data = certificate_file.read()
             
-            # Validar certificado con la contraseña
+            # --- DESENCRIPTACIÓN UNIVERSAL (TODOS LOS PROVEEDORES) ---
+            from .utils import load_p12_safely, extract_ecuador_ruc
             try:
-                private_key, cert, additional_certs = pkcs12.load_key_and_certificates(
-                    cert_data, 
-                    password.encode('utf-8')
-                )
+                private_key, cert, additional_certs = load_p12_safely(cert_data, password)
+                logger.info("✅ Firma desencriptada exitosamente con el motor universal")
             except Exception as e:
-                return Response({'error': f'Invalid certificate or password: {str(e)}'}, 
+                return Response({'error': f'Contraseña incorrecta o formato no soportado: {str(e)}'}, 
                               status=status.HTTP_400_BAD_REQUEST)
             
-            # Extraer información del certificado
+            # --- EXTRACCIÓN DE DATOS MULTI-PROVEEDOR ---
+            extracted_ruc, extracted_name = extract_ecuador_ruc(cert)
+            from django.utils.timezone import make_aware
+            import datetime
+            
+            # Extraer metadatos del certificado
             subject = cert.subject
             issuer = cert.issuer
             serial_number = str(cert.serial_number)
-            valid_from = cert.not_valid_before
-            valid_to = cert.not_valid_after
             
-            # Calcular fingerprint
-            import hashlib
+            # Asegurar que las fechas sean aware (Django las prefiere así)
+            valid_from = cert.not_valid_before
+            if valid_from.tzinfo is None:
+                valid_from = make_aware(valid_from)
+                
+            valid_to = cert.not_valid_after
+            if valid_to.tzinfo is None:
+                valid_to = make_aware(valid_to)
+                
             fingerprint = hashlib.sha256(cert.public_bytes(serialization.Encoding.DER)).hexdigest()
             
-            # Verificar si ya existe un certificado para esta empresa
+            # Detectar ambiente SRI sugerido
+            environment = 'TEST'
+            if "uanataca" in str(issuer).lower() or "security data" in str(issuer).lower():
+                environment = 'PRODUCTION' 
+            
+            # ------------------------------------------------------
+            if extracted_ruc and len(extracted_ruc) < 13:
+                logger.warning(f"⚠️ RUC extraído sospechoso: {extracted_ruc}")
+            # --------------------------------------------------
+            
+            # Verificar si ya existe una empresa o crear la Matriz
             from apps.companies.models import Company
-            try:
-                company = Company.objects.get(id=company_id)
-                existing_cert = DigitalCertificate.objects.filter(company=company).first()
-                if existing_cert:
-                    # Desactivar certificado anterior
-                    existing_cert.status = 'INACTIVE'
-                    existing_cert.save()
-            except Company.DoesNotExist:
-                return Response({'error': 'Company not found'}, 
-                              status=status.HTTP_400_BAD_REQUEST)
+            from apps.users.models import User, UserCompanyAssignment
+            
+            company = None
+            if company_id and company_id != "undefined" and company_id != "null":
+                try:
+                    company = Company.objects.get(id=company_id)
+                except Company.DoesNotExist:
+                    pass
+            
+            # Si no hay empresa especificada o no existe, buscar la Matriz o crearla
+            if not company:
+                company = Company.objects.filter(is_active=True).first()
+                if not company:
+                    # ✨ AUTO-CREACIÓN: Si no hay nada, creamos la Matriz con los datos del certificado
+                    logger.info(f"🚀 Creando Empresa Matriz automática para RUC: {extracted_ruc}")
+                    company = Company.objects.create(
+                        ruc=extracted_ruc or "0000000000001",
+                        business_name=extracted_name or "Empresa Matriz Principal",
+                        trade_name=extracted_name or "Empresa Matriz",
+                        email="administrador@rutafact.com",
+                        address="Dirección Principal",
+                        ciudad="Quito",
+                        is_active=True
+                    )
+                    # Asignar al usuario actual (superuser)
+                    user = request.user
+                    if user.is_authenticated:
+                        # Usando el nombre de campo correcto según el error: assigned_companies
+                        UserCompanyAssignment.objects.get_or_create(
+                            user=user, 
+                            assigned_companies=company, 
+                            status='APPROVED'
+                        )
+            
+            # Re-asignar company_id para el resto del proceso
+            company_id = company.id
+            
+            # Desactivar certificados anteriores de esta empresa
+            DigitalCertificate.objects.filter(company=company).update(status='INACTIVE')
             
             # Guardar archivo en storage seguro
             filename = f"cert_{company_id}_{cert.serial_number}.p12"
@@ -106,6 +153,8 @@ class DigitalCertificateViewSet(viewsets.ModelViewSet):
                 serial_number=serial_number,
                 valid_from=valid_from,
                 valid_to=valid_to,
+                extracted_ruc=extracted_ruc,
+                extracted_name=extracted_name,
                 fingerprint=fingerprint,
                 environment=environment,
                 status='ACTIVE'
@@ -126,6 +175,8 @@ class DigitalCertificateViewSet(viewsets.ModelViewSet):
             return Response({
                 'status': 'Certificate uploaded successfully',
                 'certificate_id': certificate.id,
+                'extracted_ruc': extracted_ruc,
+                'extracted_name': extracted_name,
                 'subject': str(subject),
                 'issuer': str(issuer),
                 'serial_number': serial_number,
@@ -220,6 +271,59 @@ class DigitalCertificateViewSet(viewsets.ModelViewSet):
             'message': f'{len(expiring_certs)} certificates expiring in the next 30 days'
         })
     
+    @action(detail=False, methods=['delete'])
+    def delete_active(self, request):
+        """Elimina el certificado activo de la empresa matriz"""
+        try:
+            # Importar dinámicamente para evitar circulares
+            from apps.core.views import get_user_companies_secure
+            companies = get_user_companies_secure(request.user)
+            
+            if not companies.exists():
+                return Response({'error': 'No tienes empresas asignadas'}, status=404)
+            
+            company = companies.first()
+            cert = DigitalCertificate.objects.filter(company=company).first()
+            
+            if cert:
+                cert_id = cert.id
+                cert.delete()
+                logger.info(f"🗑️ Certificado {cert_id} eliminado exitosamente para empresa {company.ruc}")
+                return Response({'status': 'Certificate deleted successfully'})
+            else:
+                return Response({'error': 'No se encontró una firma activa para eliminar'}, status=404)
+        except Exception as e:
+            logger.error(f"Error eliminando certificado: {e}")
+            return Response({'error': str(e)}, status=500)
+            
+    @action(detail=False, methods=['post'])
+    def update_environment(self, request):
+        """Actualiza el ambiente (TEST/PRODUCTION) del certificado activo"""
+        try:
+            environment = request.data.get('environment')
+            if environment not in ['TEST', 'PRODUCTION']:
+                return Response({'error': 'Ambiente no válido'}, status=400)
+
+            from apps.core.views import get_user_companies_secure
+            companies = get_user_companies_secure(request.user)
+            
+            if not companies.exists():
+                return Response({'error': 'No tienes empresas asignadas'}, status=404)
+            
+            company = companies.first()
+            cert = DigitalCertificate.objects.filter(company=company).first()
+            
+            if cert:
+                cert.environment = environment
+                cert.save() # El save() del modelo ya sincroniza con Company y SRIConfig
+                logger.info(f"🌐 Ambiente actualizado a {environment} para empresa {company.ruc}")
+                return Response({'status': 'Environment updated successfully'})
+            else:
+                return Response({'error': 'No se encontró un certificado activo'}, status=404)
+        except Exception as e:
+            logger.error(f"Error actualizando ambiente: {e}")
+            return Response({'error': str(e)}, status=500)
+
     def _get_client_ip(self, request):
         """Obtener IP del cliente"""
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')

@@ -136,10 +136,15 @@ services:
     restart: unless-stopped
     networks:
       - general-net
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    container_name: RutaFact_tunnel
-    command: tunnel --url http://backend:8000
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: RutaFact_ngrok
+    environment:
+      - NGROK_AUTHTOKEN=3CUdbJv5TLp5oYua8r8Ip5YGN0n_2bmRLJi1CYMvWHMBAPjMQ
+    command:
+      - "http"
+      - "backend:8000"
+      - "--domain=jolly-disprove-swear.ngrok-free.dev"
     depends_on:
       - backend
     restart: unless-stopped

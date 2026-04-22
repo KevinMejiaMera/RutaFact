@@ -29,6 +29,7 @@ from apps.api.views.logistics_views import VehicleViewSet, RouteViewSet, RouteSt
 
 # 🔑🔑🔑 IMPORTAR AUTH VIEWS PARA TOKENS 🔑🔑🔑
 from apps.api.views.auth_views import token_login, token_logout, token_profile, auth_status, token_register
+from apps.api.views.user_views import UserViewSet
 
 
 def api_status(request):
@@ -297,6 +298,7 @@ router.register(r'products', ProductViewSet, basename='product')
 router.register(r'vehicles', VehicleViewSet, basename='vehicle')
 router.register(r'routes', RouteViewSet, basename='route')
 router.register(r'route-stops', RouteStopViewSet, basename='route-stop')
+router.register(r'users', UserViewSet, basename='user')
 
 # Registrar ViewSets SRI si están disponibles
 if SRI_AVAILABLE:
@@ -397,6 +399,9 @@ urlpatterns = [
     
     # Router con ViewSets (incluye SRI si está disponible)
     path('', include(router.urls)),
+    
+    # 📜 Certificados Digitales (P12)
+    path('', include('apps.certificates.urls')),
     
     # URLs específicas SRI
     path('', include(sri_urlpatterns)),

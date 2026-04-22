@@ -104,7 +104,9 @@ class User(AbstractUser):
     
     USER_ROLE_CHOICES = [
         ('admin', 'Administrador'),
+        ('seller', 'Vendedor'),
         ('dispatcher', 'Despachador'),
+        ('driver', 'Transportador'),
         ('client', 'Cliente'),
     ]
     

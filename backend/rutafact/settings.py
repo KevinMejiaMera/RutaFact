@@ -305,6 +305,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
         "apps.api.authentication.DualTokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
@@ -330,6 +331,24 @@ REST_FRAMEWORK = {
         "anon": config('API_THROTTLE_ANON', default='100/day'),
         "user": config('API_THROTTLE_USER', default='1000/day')
     }
+}
+
+# ==========================================
+# JWT AUTHENTICATION SETTINGS
+# ==========================================
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=2),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'AUTH_HEADER_TYPES': ('Bearer', 'Token'),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
 }
 
 # ==========================================
@@ -364,6 +383,7 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
     'x-api-key',
     'x-auth-token',
+    'ngrok-skip-browser-warning',
 ]
 
 # ==========================================
@@ -684,37 +704,37 @@ LOGGING = {
             'datefmt': '%Y-%m-%d %H:%M:%S'
         },
     },
-'handlers': {
-    'console': {
-        'class': 'logging.StreamHandler',
-        'formatter': 'simple',
-        'level': LOG_LEVEL,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+            'level': LOG_LEVEL,
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'rutafact.log'),
+            'formatter': 'verbose',
+            'level': LOG_LEVEL,
+        },
+        'celery_file': {
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'celery.log'),
+            'formatter': 'celery',
+            'level': 'INFO',
+        },
+        'sri_file': {
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'sri_integration.log'),
+            'formatter': 'sri_integration',
+            'level': 'INFO',
+        },
+        'certificates_file': {
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'certificates.log'),
+            'formatter': 'certificates',
+            'level': 'INFO',
+        },
     },
-    'file': {
-        'class': 'logging.FileHandler',
-        'filename': '/app/storage/logs/rutafact.log',
-        'formatter': 'verbose',
-        'level': LOG_LEVEL,
-    },
-    'celery_file': {
-        'class': 'logging.FileHandler',
-        'filename': '/app/logs/celery.log',
-        'formatter': 'celery',
-        'level': 'INFO',
-    },
-    'sri_file': {
-        'class': 'logging.FileHandler',
-        'filename': '/app/storage/logs/sri_integration.log',
-        'formatter': 'sri_integration',
-        'level': 'INFO',
-    },
-    'certificates_file': {
-        'class': 'logging.FileHandler',
-        'filename': '/app/storage/logs/certificates.log',
-        'formatter': 'certificates',
-        'level': 'INFO',
-    },
-},
     'loggers': {
         'django': {
             'handlers': ['console', 'file'],
@@ -924,3 +944,8 @@ if not SECRET_KEY or SECRET_KEY == 'django-insecure-rutafact-sri-change-this-in-
     if not DEBUG:
         raise ValueError("❌ SECRET_KEY crítica no configurada para producción")
 
+
+
+# Redirects
+LOGIN_REDIRECT_URL = '/dashboard/'
+LOGOUT_REDIRECT_URL = '/accounts/login/'

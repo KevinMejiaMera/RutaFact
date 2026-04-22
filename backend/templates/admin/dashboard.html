@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block page_title %}Panel Matriz{% endblock %}
+
+{% block content %}
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 40px;">
+    <div class="card" style="display: flex; align-items: center; gap: 20px;">
+        <div style="background: rgba(108, 99, 255, 0.1); width: 60px; height: 60px; border-radius: 15px; display: flex; align-items: center; justify-content: center;">
+            <i class="fas fa-building" style="color: var(--primary); font-size: 24px;"></i>
+        </div>
+        <div>
+            <h3 style="font-size: 28px;">{{ companies_count }}</h3>
+            <p style="color: var(--text-dim); font-size: 14px;">Empresas Activas</p>
+        </div>
+    </div>
+    
+    <div class="card" style="display: flex; align-items: center; gap: 20px;">
+        <div style="background: rgba(255, 140, 66, 0.1); width: 60px; height: 60px; border-radius: 15px; display: flex; align-items: center; justify-content: center;">
+            <i class="fas fa-file-invoice-dollar" style="color: var(--accent); font-size: 24px;"></i>
+        </div>
+        <div>
+            <h3 style="font-size: 28px;">{{ invoices_month|default:0 }}</h3>
+            <p style="color: var(--text-dim); font-size: 14px;">Facturas Mes</p>
+        </div>
+    </div>
+</div>
+
+<h2 style="margin-bottom: 25px;">Empresa Matriz</h2>
+<div class="grid-container" style="display: grid; grid-template-columns: 1fr; gap: 20px;">
+    {% for company in companies %}
+    <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 30px;">
+        <div>
+            <h4 style="font-size: 24px; margin-bottom: 5px;">{{ company.business_name }}</h4>
+            <p style="color: var(--primary); font-weight: 700; font-size: 18px; margin-bottom: 10px;">RUC: {{ company.ruc }}</p>
+            <div style="display: flex; gap: 20px; color: var(--text-dim); font-size: 14px;">
+                <span><i class="fas fa-map-marker-alt"></i> {{ company.ciudad|default:"Ubicación no configurada" }}</span>
+                <span><i class="fas fa-phone"></i> {{ company.phone|default:"Sin teléfono" }}</span>
+            </div>
+        </div>
+        
+        <div style="display: flex; flex-direction: column; gap: 10px; min-width: 200px;">
+            <a href="/dashboard/config/" class="btn-primary" style="padding: 12px 20px; text-align: center; text-decoration: none;">
+                <i class="fas fa-cog"></i> CONFIGURAR SRI
+            </a>
+            <a href="/dashboard/invoices/" class="btn-primary" style="background: transparent; border: 1px solid var(--border); padding: 12px 20px; text-align: center; text-decoration: none; color: white;">
+                <i class="fas fa-list"></i> HISTORIAL FACTURAS
+            </a>
+        </div>
+    </div>
+    {% empty %}
+    <div class="card" style="text-align: center; padding: 60px;">
+        <i class="fas fa-exclamation-triangle" style="font-size: 50px; color: var(--accent); margin-bottom: 20px;"></i>
+        <h3>¡Atención! No hay una Matriz configurada</h3>
+        <p style="color: var(--text-dim); margin-bottom: 25px;">Debes crear la empresa matriz en el sistema para empezar a facturar.</p>
+        <button class="btn-primary" style="padding: 15px 30px;">CREAR EMPRESA MATRIZ</button>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

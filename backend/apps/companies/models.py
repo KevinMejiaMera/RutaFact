@@ -100,6 +100,21 @@ class Company(models.Model):
         help_text=_('Número de contribuyente especial (si aplica)')
     )
     
+    REGIMEN_CHOICES = [
+        ('GENERAL', _('Régimen General')),
+        ('RIMPE_EMPRENDEDOR', _('Régimen RIMPE - Emprendedor')),
+        ('RIMPE_POPULAR', _('Régimen RIMPE - Negocio Popular')),
+        ('AGROPECUARIO', _('Régimen Agropecuario')),
+    ]
+    
+    regimen = models.CharField(
+        _('régimen'),
+        max_length=30,
+        choices=REGIMEN_CHOICES,
+        default='GENERAL',
+        help_text=_('Tipo de régimen tributario para impresión en facturas')
+    )
+    
     # ===============================================================
     # INFORMACIÓN ADICIONAL PARA SRI
     # ===============================================================
@@ -342,7 +357,8 @@ class Company(models.Model):
                     retention_sequence=self.secuencial_retencion,
                     accounting_required=(self.obligado_contabilidad == 'SI'),
                     special_taxpayer=bool(self.contribuyente_especial),
-                    special_taxpayer_number=self.contribuyente_especial or ''
+                    special_taxpayer_number=self.contribuyente_especial or '',
+                    regimen=self.regimen
                 )
             
             # 3. Sincronizar también el ambiente en el Certificado Digital si existe
@@ -386,6 +402,13 @@ class Company(models.Model):
         """
         Obtiene y actualiza el próximo secuencial para un tipo de documento
         """
+        # Sincronización del campo regimen (Company -> SRIConfig)
+        if hasattr(self, 'sri_configuration'):
+            from apps.sri_integration.models import SRIConfiguration
+            SRIConfiguration.objects.filter(pk=self.sri_configuration.pk).update(
+                regimen=self.regimen
+            )
+
         field_map = {
             'factura': 'secuencial_factura',
             'nota_credito': 'secuencial_nota_credito',

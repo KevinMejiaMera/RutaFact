@@ -196,17 +196,17 @@ from celery.signals import task_prerun, task_postrun, task_failure
 @task_prerun.connect
 def task_prerun_handler(sender=None, task_id=None, task=None, args=None, kwargs=None, **kwds):
     """Handler ejecutado antes de cada tarea"""
-    print(f'🚀 [CELERY] Starting task {task.name} with ID {task_id}')
+    print(f'[CELERY] Starting task {task.name} with ID {task_id}')
 
 @task_postrun.connect
 def task_postrun_handler(sender=None, task_id=None, task=None, args=None, kwargs=None, retval=None, state=None, **kwds):
     """Handler ejecutado después de cada tarea"""
-    print(f'✅ [CELERY] Completed task {task.name} with ID {task_id} - State: {state}')
+    print(f'[CELERY] Completed task {task.name} with ID {task_id} - State: {state}')
 
 @task_failure.connect
 def task_failure_handler(sender=None, task_id=None, exception=None, einfo=None, **kwds):
     """Handler ejecutado cuando una tarea falla"""
-    print(f'❌ [CELERY] Task {sender.name} with ID {task_id} failed: {exception}')
+    print(f'[CELERY] Task {sender.name} with ID {task_id} failed: {exception}')
 
 # ==========================================
 # FUNCIÓN DE INICIALIZACIÓN
@@ -222,14 +222,14 @@ def initialize_celery():
         stats = inspector.stats()
         
         if stats:
-            print("✅ Celery broker connection successful")
+            print("Celery broker connection successful")
             return True
         else:
-            print("⚠️ Celery broker connection failed")
+            print("Celery broker connection failed")
             return False
             
     except Exception as e:
-        print(f"❌ Error initializing Celery: {e}")
+        print(f"Error initializing Celery: {e}")
         return False
 
 # ==========================================
@@ -244,19 +244,19 @@ if settings.DEBUG:
         task_store_eager_result=True,
     )
     
-    print("🛠️ Celery configured for development mode")
+    print("Celery configured for development mode")
 else:
-    print("🏭 Celery configured for production mode")
+    print("Celery configured for production mode")
 
 # ==========================================
 # INFORMACIÓN DE CONFIGURACIÓN
 # ==========================================
 
-print(f"🔧 Celery App: {app.main}")
-print(f"🔴 Broker: {app.conf.broker_url}")
-print(f"📊 Result Backend: {app.conf.result_backend}")
-print(f"⏰ Timezone: {app.conf.timezone}")
-print(f"📋 Beat Schedule: {len(app.conf.beat_schedule)} periodic tasks configured")
+print(f"Celery App: {app.main}")
+print(f"Broker: {app.conf.broker_url}")
+print(f"Result Backend: {app.conf.result_backend}")
+print(f"Timezone: {app.conf.timezone}")
+print(f"Beat Schedule: {len(app.conf.beat_schedule)} periodic tasks configured")
 
 # Exportar la aplicación para uso en manage.py y otros lugares
 celery_app = app

@@ -83,6 +83,21 @@ class SRIConfiguration(BaseModel):
         help_text=_('SRI environment')
     )
     
+    REGIMEN_CHOICES = [
+        ('GENERAL', _('Régimen General')),
+        ('RIMPE_EMPRENDEDOR', _('Régimen RIMPE - Emprendedor')),
+        ('RIMPE_POPULAR', _('Régimen RIMPE - Negocio Popular')),
+        ('AGROPECUARIO', _('Régimen Agropecuario')),
+    ]
+    
+    regimen = models.CharField(
+        _('regimen'),
+        max_length=30,
+        choices=REGIMEN_CHOICES,
+        default='GENERAL',
+        help_text=_('Tax regime for SRI documents')
+    )
+    
     # Configuración de establecimiento
     establishment_code = models.CharField(
         _('establishment code'),
@@ -412,13 +427,14 @@ class SRIConfiguration(BaseModel):
             # Sincronizar campos adicionales (obligado contabilidad y contribuyente especial)
             company.obligado_contabilidad = 'SI' if self.accounting_required else 'NO'
             company.contribuyente_especial = self.special_taxpayer_number if self.special_taxpayer else None
+            company.regimen = self.regimen
             
             # Guardar solo los campos modificados para evitar bucles si Company.save() también sincroniza
             company.save(update_fields=[
                 'ambiente_sri', 'codigo_establecimiento', 'codigo_punto_emision',
                 'secuencial_factura', 'secuencial_nota_credito', 
                 'secuencial_nota_debito', 'secuencial_retencion',
-                'obligado_contabilidad', 'contribuyente_especial'
+                'obligado_contabilidad', 'contribuyente_especial', 'regimen'
             ])
             
             # 3. Sincronizar también el ambiente en el Certificado Digital si existe
