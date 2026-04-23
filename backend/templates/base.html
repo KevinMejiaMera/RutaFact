@@ -166,6 +166,9 @@
             <li class="nav-item">
                 <a href="/dashboard/config/" class="nav-link {% if request.path == '/dashboard/config/' %}active{% endif %}"><i class="fas fa-cog"></i> Configuración SRI</a>
             </li>
+            <li class="nav-item">
+                <a href="/dashboard/tracking/" class="nav-link {% if '/tracking/' in request.path %}active{% endif %}"><i class="fas fa-route"></i> Recorrido (GPS)</a>
+            </li>
         </ul>
 
         <div style="padding: 20px; border-top: 1px solid var(--border);">
@@ -189,5 +192,28 @@
 
         {% block content %}{% endblock %}
     </main>
+    <!-- WebSocket Real-time Updates -->
+    <script>
+        const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/user/';
+        const socket = new WebSocket(wsUrl);
+
+        socket.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            console.log("📩 [WS] Mensaje recibido:", data);
+            
+            if (data.type === 'user_update') {
+                // Si estamos en la página de usuarios, podemos recargar o actualizar la fila
+                if (window.location.pathname.includes('/dashboard/users/')) {
+                    console.log("🔄 Actualizando lista de usuarios...");
+                    // En lugar de alert, podemos hacer un refresh suave o simplemente ignorar si fue nuestra propia acción
+                }
+            }
+        };
+
+        socket.onclose = function(e) {
+            console.error('🔌 [WS] Socket cerrado inesperadamente. Reintentando...');
+            setTimeout(() => window.location.reload(), 5000); // Intento de reconexión rústico
+        };
+    </script>
 </body>
 </html>

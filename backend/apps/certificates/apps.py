@@ -28,7 +28,7 @@ class CertificatesConfig(AppConfig):
         Integra GlobalCertificateManager para auto-gestión
         """
         try:
-            logger.info("🚀 Inicializando aplicación de certificados digitales...")
+            logger.info("[START] Inicializando aplicación de certificados digitales...")
             
             # 1. Importar signals para registrarlos automáticamente
             self._register_signals()
@@ -42,10 +42,10 @@ class CertificatesConfig(AppConfig):
             # 4. Configurar limpieza automática de cache
             self._setup_auto_cleanup()
             
-            logger.info("✅ Aplicación de certificados digitales inicializada correctamente")
+            logger.info("[OK] Aplicación de certificados digitales inicializada correctamente")
             
         except Exception as e:
-            logger.error(f"❌ Error inicializando aplicación de certificados: {e}")
+            logger.error(f"[ERROR] Error inicializando aplicación de certificados: {e}")
     
     def _register_signals(self):
         """
@@ -53,11 +53,11 @@ class CertificatesConfig(AppConfig):
         """
         try:
             import apps.certificates.signals
-            logger.info("✅ Signals de certificados registrados")
+            logger.info("[OK] Signals de certificados registrados")
         except ImportError as e:
-            logger.warning(f"⚠️  No se pudieron cargar signals: {e}")
+            logger.warning(f"[WARN] No se pudieron cargar signals: {e}")
         except Exception as e:
-            logger.error(f"❌ Error registrando signals: {e}")
+            logger.error(f"[ERROR] Error registrando signals: {e}")
     
     def _setup_certificate_logging(self):
         """
@@ -78,10 +78,10 @@ class CertificatesConfig(AppConfig):
                 cert_logger.addHandler(console_handler)
                 cert_logger.setLevel(logging.INFO)
             
-            logger.info("✅ Logging de certificados configurado")
+            logger.info("[OK] Logging de certificados configurado")
             
         except Exception as e:
-            logger.error(f"❌ Error configurando logging: {e}")
+            logger.error(f"[ERROR] Error configurando logging: {e}")
     
     def _setup_auto_preload(self):
         """
@@ -94,7 +94,7 @@ class CertificatesConfig(AppConfig):
             auto_preload = getattr(settings, 'CERTIFICATE_AUTO_PRELOAD', True)
             
             if not auto_preload:
-                logger.info("📋 Precarga automática deshabilitada en settings")
+                logger.info("[INFO] Precarga automática deshabilitada en settings")
                 return
             
             # Configurar delay antes de precargar
@@ -106,7 +106,7 @@ class CertificatesConfig(AppConfig):
                     # Esperar a que Django termine de cargar completamente
                     time.sleep(delay)
                     
-                    logger.info(f"🔄 Iniciando precarga automática de certificados (delay: {delay}s)")
+                    logger.info(f"[RELOAD] Iniciando precarga automática de certificados (delay: {delay}s)")
                     
                     # Importar y ejecutar precarga de base de datos (status)
                     from apps.certificates.signals import preload_certificates_on_startup
@@ -117,10 +117,10 @@ class CertificatesConfig(AppConfig):
                     cert_manager = get_certificate_manager()
                     cert_manager.preload_certificates()
                     
-                    logger.info("✅ Precarga física de certificados en memoria completada")
+                    logger.info("[OK] Precarga física de certificados en memoria completada")
                     
                 except Exception as e:
-                    logger.error(f"❌ Error en precarga automática: {e}")
+                    logger.error(f"[ERROR] Error en precarga automática: {e}")
             
             # Crear y lanzar thread
             preload_thread = threading.Thread(
@@ -130,10 +130,10 @@ class CertificatesConfig(AppConfig):
             )
             preload_thread.start()
             
-            logger.info("✅ Precarga automática de certificados configurada")
+            logger.info("[OK] Precarga automática de certificados configurada")
             
         except Exception as e:
-            logger.error(f"❌ Error configurando precarga automática: {e}")
+            logger.error(f"[ERROR] Error configurando precarga automática: {e}")
     
     def _setup_auto_cleanup(self):
         """
@@ -147,7 +147,7 @@ class CertificatesConfig(AppConfig):
             cleanup_interval = getattr(settings, 'CERTIFICATE_CLEANUP_INTERVAL', 300)  # 5 minutos
             
             if not auto_cleanup:
-                logger.info("📋 Limpieza automática deshabilitada en settings")
+                logger.info("[INFO] Limpieza automática deshabilitada en settings")
                 return
             
             def periodic_cleanup():
@@ -165,10 +165,10 @@ class CertificatesConfig(AppConfig):
                         # Limpiar certificados expirados
                         cert_manager.cleanup_expired_certificates()
                         
-                        logger.debug("🧹 Limpieza automática de certificados ejecutada")
+                        logger.debug("[CLEAN] Limpieza automática de certificados ejecutada")
                         
                     except Exception as e:
-                        logger.error(f"❌ Error en limpieza automática: {e}")
+                        logger.error(f"[ERROR] Error en limpieza automática: {e}")
                         # Continuar ejecutando a pesar del error
                         continue
             
@@ -180,10 +180,10 @@ class CertificatesConfig(AppConfig):
             )
             cleanup_thread.start()
             
-            logger.info(f"✅ Limpieza automática configurada (intervalo: {cleanup_interval}s)")
+            logger.info(f"[OK] Limpieza automática configurada (intervalo: {cleanup_interval}s)")
             
         except Exception as e:
-            logger.error(f"❌ Error configurando limpieza automática: {e}")
+            logger.error(f"[ERROR] Error configurando limpieza automática: {e}")
     
     def get_certificate_manager_status(self):
         """
@@ -194,7 +194,7 @@ class CertificatesConfig(AppConfig):
             cert_manager = get_certificate_manager()
             return cert_manager.get_stats()
         except Exception as e:
-            logger.error(f"❌ Error obteniendo estado del certificate manager: {e}")
+            logger.error(f"[ERROR] Error obteniendo estado del certificate manager: {e}")
             return {'error': str(e)}
     
     def preload_all_certificates(self, force_reload=False):
@@ -207,14 +207,14 @@ class CertificatesConfig(AppConfig):
             
             if force_reload:
                 cert_manager.clear_cache()
-                logger.info("🗑️  Cache limpiado antes de precargar")
+                logger.info("[DELETE] Cache limpiado antes de precargar")
             
             result = cert_manager.preload_certificates()
-            logger.info(f"✅ Precarga manual completada: {result}")
+            logger.info(f"[OK] Precarga manual completada: {result}")
             return result
             
         except Exception as e:
-            logger.error(f"❌ Error en precarga manual: {e}")
+            logger.error(f"[ERROR] Error en precarga manual: {e}")
             return {'error': str(e)}
     
     def validate_all_certificates(self):
@@ -252,11 +252,11 @@ class CertificatesConfig(AppConfig):
                         'message': f'Error validating: {str(e)}'
                     })
             
-            logger.info(f"✅ Validación completada para {len(validation_results)} empresas")
+            logger.info(f"[OK] Validación completada para {len(validation_results)} empresas")
             return validation_results
             
         except Exception as e:
-            logger.error(f"❌ Error en validación de certificados: {e}")
+            logger.error(f"[ERROR] Error en validación de certificados: {e}")
             return {'error': str(e)}
     
     def get_app_info(self):
@@ -316,7 +316,7 @@ def preload_certificates_manually(force_reload=False):
         app_config = get_certificates_app_config()
         return app_config.preload_all_certificates(force_reload)
     except Exception as e:
-        logger.error(f"❌ Error en precarga manual: {e}")
+        logger.error(f"[ERROR] Error en precarga manual: {e}")
         return {'error': str(e)}
 
 
@@ -333,7 +333,7 @@ def get_certificate_system_status():
             'validation_results': app_config.validate_all_certificates()
         }
     except Exception as e:
-        logger.error(f"❌ Error obteniendo estado del sistema: {e}")
+        logger.error(f"[ERROR] Error obteniendo estado del sistema: {e}")
         return {'error': str(e)}
 
 

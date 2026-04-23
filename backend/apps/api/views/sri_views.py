@@ -909,12 +909,18 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
     def dashboard(self, request):
         """
         Endpoint de estadísticas para el dashboard principal.
+        Corregido para ser dinámico y específico por rol.
         """
         company = request.validated_company
+        user = request.user
         
         # Filtrar documentos por empresa
         documents = ElectronicDocument.objects.filter(company=company)
         
+        # Si es vendedor, filtrar solo sus propios documentos
+        if user.role == 'seller':
+            documents = documents.filter(created_by=user)
+            
         # Estadísticas de estados
         total_docs = documents.count()
         authorized_docs = documents.filter(status='AUTHORIZED').count()
@@ -942,6 +948,19 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
                 'created_at': doc.created_at.isoformat()
             })
             
+        # Estadísticas adicionales (Vendedor / General)
+        from apps.tracking.models import TrackingRoute
+        from apps.invoicing.models import ProductTemplate
+        
+        # Conteo de rutas (visitas)
+        if user.role == 'seller':
+            routes_count = TrackingRoute.objects.filter(user=user, company=company).count()
+        else:
+            routes_count = TrackingRoute.objects.filter(company=company).count()
+            
+        # Conteo de inventario
+        inventory_count = ProductTemplate.objects.filter(company=company, is_active=True).count()
+            
         return Response({
             'company': {
                 'id': company.id,
@@ -954,6 +973,8 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
                 'pending': pending_docs,
                 'errors': error_docs,
                 'total_sales': str(totals['total_sales'] or '0.00'),
+                'routes_count': routes_count,
+                'inventory_count': inventory_count,
             },
             'recent_documents': recent_data
         })
@@ -1269,6 +1290,7 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             
             electronic_doc = ElectronicDocument.objects.create(
                 company=company,
+                created_by=request.user,
                 document_type='INVOICE',
                 document_number=document_number,
                 issue_date=data['issue_date'],
@@ -1436,6 +1458,7 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             # Crear nota de crédito
             credit_note = CreditNote.objects.create(
                 company=company,
+                created_by=request.user,
                 document_number=document_number,
                 issue_date=data['issue_date'],
                 customer_identification_type=data['customer_identification_type'],
@@ -1579,6 +1602,7 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             # Crear nota de débito
             debit_note = DebitNote.objects.create(
                 company=company,
+                created_by=request.user,
                 document_number=document_number,
                 issue_date=data['issue_date'],
                 customer_identification_type=data['customer_identification_type'],

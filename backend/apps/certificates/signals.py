@@ -23,19 +23,19 @@ Company = None
 try:
     from .models import DigitalCertificate
     from apps.companies.models import Company
-    logger.info("✅ DigitalCertificate imported from .models")
+    logger.info("[OK] DigitalCertificate imported from .models")
 except ImportError:
     try:
         from apps.certificates.models import DigitalCertificate
         from apps.companies.models import Company
-        logger.info("✅ DigitalCertificate imported from apps.certificates.models")
+        logger.info("[OK] DigitalCertificate imported from apps.certificates.models")
     except ImportError:
         try:
             from apps.core.models import DigitalCertificate
             from apps.companies.models import Company
-            logger.info("✅ DigitalCertificate imported from apps.core.models")
+            logger.info("[OK] DigitalCertificate imported from apps.core.models")
         except ImportError:
-            logger.warning("⚠️ DigitalCertificate model not found - signals disabled")
+            logger.warning("[WARN] DigitalCertificate model not found - signals disabled")
 
 # ========== FUNCIÓN PRINCIPAL REQUERIDA ==========
 
@@ -45,7 +45,7 @@ def preload_certificates_on_startup():
     FUNCIÓN REQUERIDA por el sistema de inicialización
     """
     if not DigitalCertificate:
-        logger.warning("⚠️ DigitalCertificate model not available - skipping preload")
+        logger.warning("[WARN] DigitalCertificate model not available - skipping preload")
         return {
             'status': 'skipped',
             'reason': 'model_not_available',
@@ -53,7 +53,7 @@ def preload_certificates_on_startup():
         }
         
     try:
-        logger.info("🔄 Iniciando precarga de certificados...")
+        logger.info("[RELOAD] Iniciando precarga de certificados...")
         
         # Contar certificados activos
         try:
@@ -69,7 +69,7 @@ def preload_certificates_on_startup():
             logger.info(f"📊 Certificados encontrados: {total_certificates} total, {active_certificates} activos")
             
             if expired_certificates > 0:
-                logger.warning(f"⚠️ {expired_certificates} certificados activos están expirados")
+                logger.warning(f"[WARN] {expired_certificates} certificados activos están expirados")
                 
                 # Marcar certificados expirados
                 expired_count = DigitalCertificate.objects.filter(
@@ -77,7 +77,7 @@ def preload_certificates_on_startup():
                     valid_to__lt=timezone.now()
                 ).update(status='EXPIRED')
                 
-                logger.info(f"🔄 {expired_count} certificados marcados como expirados")
+                logger.info(f"[RELOAD] {expired_count} certificados marcados como expirados")
             
             # Verificar certificados por expirar (próximos 30 días)
             future_date = timezone.now() + timedelta(days=30)
@@ -88,7 +88,7 @@ def preload_certificates_on_startup():
             ).count()
             
             if expiring_soon > 0:
-                logger.warning(f"⚠️ {expiring_soon} certificados expiran en los próximos 30 días")
+                logger.warning(f"[WARN] {expiring_soon} certificados expiran en los próximos 30 días")
             
             # Verificar integridad de archivos
             missing_files = 0
@@ -101,9 +101,9 @@ def preload_certificates_on_startup():
                     missing_files += 1
             
             if missing_files > 0:
-                logger.warning(f"⚠️ {missing_files} certificados tienen archivos faltantes en el almacenamiento")
+                logger.warning(f"[WARN] {missing_files} certificados tienen archivos faltantes en el almacenamiento")
             
-            logger.info(f"✅ Precarga completada: {active_certificates} certificados activos listos")
+            logger.info(f"[OK] Precarga completada: {active_certificates} certificados activos listos")
             
             return {
                 'status': 'success',
@@ -116,7 +116,7 @@ def preload_certificates_on_startup():
             }
                 
         except Exception as e:
-            logger.error(f"❌ Error en precarga de certificados: {e}")
+            logger.error(f"[ERROR] Error en precarga de certificados: {e}")
             return {
                 'status': 'error',
                 'error': str(e),
@@ -124,7 +124,7 @@ def preload_certificates_on_startup():
             }
             
     except Exception as e:
-        logger.error(f"❌ Error crítico en preload_certificates_on_startup: {e}")
+        logger.error(f"[ERROR] Error crítico en preload_certificates_on_startup: {e}")
         return {
             'status': 'critical_error',
             'error': str(e),
@@ -189,7 +189,7 @@ if DigitalCertificate and Company:
         try:
             # Solo procesar si hay archivo de certificado
             if not instance.certificate_file:
-                logger.warning(f"⚠️ Certificado {instance.id} guardado sin archivo")
+                logger.warning(f"[WARN] Certificado {instance.id} guardado sin archivo")
                 return
             
             company_ruc = instance.company.ruc if instance.company else 'unknown'
@@ -217,7 +217,7 @@ if DigitalCertificate and Company:
                     
                     # Intentar precargar automáticamente si está activo
                     if instance.status == 'ACTIVE':
-                        logger.debug(f"🔄 Certificado activo, disponible para precarga en empresa {company_id}")
+                        logger.debug(f"[RELOAD] Certificado activo, disponible para precarga en empresa {company_id}")
                 else:
                     logger.info(f"📝 Certificado actualizado para empresa {company_id} ({instance.company.business_name})")
                     
@@ -228,12 +228,12 @@ if DigitalCertificate and Company:
                             logger.info(f"🗑️ Certificado removido del cache para empresa {company_id} (desactivado)")
             
             except ImportError:
-                logger.debug("⚠️ GlobalCertificateManager no disponible")
+                logger.debug("[WARN] GlobalCertificateManager no disponible")
             except Exception as e:
-                logger.error(f"❌ Error en integración con GlobalCertificateManager: {e}")
+                logger.error(f"[ERROR] Error en integración con GlobalCertificateManager: {e}")
             
         except Exception as e:
-            logger.error(f"❌ Error en certificate_saved_handler: {e}")
+            logger.error(f"[ERROR] Error en certificate_saved_handler: {e}")
 
 
     @receiver(pre_delete, sender=DigitalCertificate)
@@ -258,7 +258,7 @@ if DigitalCertificate and Company:
             logger.info(f"📋 Preparando eliminación de certificado para empresa {instance.company.id}")
             
         except Exception as e:
-            logger.error(f"❌ Error en certificate_pre_delete_handler: {e}")
+            logger.error(f"[ERROR] Error en certificate_pre_delete_handler: {e}")
 
 
     @receiver(post_delete, sender=DigitalCertificate)
@@ -281,9 +281,9 @@ if DigitalCertificate and Company:
                     logger.info(f"🗑️ Certificado removido del cache para empresa {company_id} (eliminado)")
             
             except ImportError:
-                logger.debug("⚠️ GlobalCertificateManager no disponible para cleanup")
+                logger.debug("[WARN] GlobalCertificateManager no disponible para cleanup")
             except Exception as e:
-                logger.error(f"❌ Error limpiando cache: {e}")
+                logger.error(f"[ERROR] Error limpiando cache: {e}")
             
             # DESACTIVADO: Limpieza de archivos locales (Se usa solo Media/Bucket)
             """
@@ -323,7 +323,7 @@ if DigitalCertificate and Company:
             logger.info(f"🗑️ Certificado eliminado completamente para empresa {instance.company.id}")
             
         except Exception as e:
-            logger.error(f"❌ Error en certificate_deleted_handler: {e}")
+            logger.error(f"[ERROR] Error en certificate_deleted_handler: {e}")
 
 
     @receiver(post_save, sender=Company)
@@ -355,15 +355,15 @@ if DigitalCertificate and Company:
                     except ImportError:
                         pass
                     except Exception as e:
-                        logger.error(f"❌ Error limpiando cache de empresa: {e}")
+                        logger.error(f"[ERROR] Error limpiando cache de empresa: {e}")
             
         except Exception as e:
-            logger.error(f"❌ Error en company_saved_handler: {e}")
+            logger.error(f"[ERROR] Error en company_saved_handler: {e}")
 
-    logger.info("✅ Signals de certificados registrados")
+    logger.info("[OK] Signals de certificados registrados")
 
 else:
-    logger.warning("⚠️ DigitalCertificate signals not registered - models not available")
+    logger.warning("[WARN] DigitalCertificate signals not registered - models not available")
 
 
 # ========== FUNCIONES DE UTILIDAD ==========
@@ -373,7 +373,7 @@ def check_expiring_certificates(days_ahead=30):
     Función para verificar certificados que expiran pronto
     """
     if not DigitalCertificate:
-        logger.warning("⚠️ DigitalCertificate model not available - skipping expiring check")
+        logger.warning("[WARN] DigitalCertificate model not available - skipping expiring check")
         return []
         
     try:
@@ -391,20 +391,20 @@ def check_expiring_certificates(days_ahead=30):
         expiring_list = list(expiring_certs)
         
         if expiring_list:
-            logger.warning(f"⚠️ {len(expiring_list)} certificados expiran en los próximos {days_ahead} días")
+            logger.warning(f"[WARN] {len(expiring_list)} certificados expiran en los próximos {days_ahead} días")
             
             for cert in expiring_list:
                 try:
                     days_left = (cert.valid_to.date() - timezone.now().date()).days
                     company_name = cert.company.business_name if cert.company else 'Sin empresa'
-                    logger.warning(f"⚠️ {company_name}: {days_left} días restantes")
+                    logger.warning(f"[WARN] {company_name}: {days_left} días restantes")
                 except Exception as e:
                     logger.error(f"Error procesando certificado {cert.id}: {e}")
         
         return expiring_list
         
     except Exception as e:
-        logger.error(f"❌ Error verificando certificados por expirar: {e}")
+        logger.error(f"[ERROR] Error verificando certificados por expirar: {e}")
         return []
 
 
@@ -413,7 +413,7 @@ def refresh_certificate_status():
     Función para actualizar el estado de todos los certificados
     """
     if not DigitalCertificate:
-        logger.warning("⚠️ DigitalCertificate model not available - skipping status refresh")
+        logger.warning("[WARN] DigitalCertificate model not available - skipping status refresh")
         return {'error': 'Model not available'}
         
     try:
@@ -424,7 +424,7 @@ def refresh_certificate_status():
         ).update(status='EXPIRED')
         
         if expired_count > 0:
-            logger.info(f"🔄 {expired_count} certificados marcados como expirados")
+            logger.info(f"[RELOAD] {expired_count} certificados marcados como expirados")
         
         # Verificar certificados por expirar
         expiring_certs = check_expiring_certificates()
@@ -435,7 +435,7 @@ def refresh_certificate_status():
         }
         
     except Exception as e:
-        logger.error(f"❌ Error actualizando estado de certificados: {e}")
+        logger.error(f"[ERROR] Error actualizando estado de certificados: {e}")
         return {'error': str(e)}
 
 
@@ -444,7 +444,7 @@ def get_certificate_statistics():
     Función para obtener estadísticas de certificados
     """
     if not DigitalCertificate:
-        logger.warning("⚠️ DigitalCertificate model not available - returning empty stats")
+        logger.warning("[WARN] DigitalCertificate model not available - returning empty stats")
         return {'error': 'Model not available'}
         
     try:
@@ -479,7 +479,7 @@ def get_certificate_statistics():
         return stats
         
     except Exception as e:
-        logger.error(f"❌ Error obteniendo estadísticas de certificados: {e}")
+        logger.error(f"[ERROR] Error obteniendo estadísticas de certificados: {e}")
         return {'error': str(e)}
 
 
@@ -516,13 +516,13 @@ def copy_certificate_to_storage(certificate_instance):
                 except:
                     pass
                 
-                logger.info(f"✅ Certificado copiado manualmente a storage: {storage_file_path}")
+                logger.info(f"[OK] Certificado copiado manualmente a storage: {storage_file_path}")
                 return True
         
         return False
         
     except Exception as e:
-        logger.error(f"❌ Error copiando certificado manualmente: {e}")
+        logger.error(f"[ERROR] Error copiando certificado manualmente: {e}")
         return False
 
 
@@ -587,7 +587,7 @@ def verify_storage_integrity():
         logger.info(f"🔍 Verificación de integridad completada: {report['total_certificates']} certificados")
         
     except Exception as e:
-        logger.error(f"❌ Error en verificación de integridad: {e}")
+        logger.error(f"[ERROR] Error en verificación de integridad: {e}")
         report['error'] = str(e)
     
     return report
@@ -639,10 +639,10 @@ def sync_all_certificates_to_storage():
                 report['failed_copies'] += 1
                 report['errors'].append(f"Certificado {cert.id}: {str(e)}")
         
-        logger.info(f"🔄 Sincronización completada: {report['successful_copies']} copiados, {report['failed_copies']} fallidos")
+        logger.info(f"[RELOAD] Sincronización completada: {report['successful_copies']} copiados, {report['failed_copies']} fallidos")
         
     except Exception as e:
-        logger.error(f"❌ Error en sincronización masiva: {e}")
+        logger.error(f"[ERROR] Error en sincronización masiva: {e}")
         report['error'] = str(e)
     
     return report
@@ -717,11 +717,11 @@ class Command(BaseCommand):
         command_file = command_dir / 'sync_certificates.py'
         command_file.write_text(command_content, encoding='utf-8')
         
-        logger.info(f"📝 Comando de management creado: {command_file}")
+        logger.info(f"[INFO] Comando de management creado: {command_file}")
         return True
         
     except Exception as e:
-        logger.warning(f"⚠️ No se pudo crear comando de management: {e}")
+        logger.warning(f"[WARN] No se pudo crear comando de management: {e}")
         return False
 
 
@@ -761,13 +761,13 @@ def setup_certificate_logging():
                 file_handler.setFormatter(file_formatter)
                 certificate_logger.addHandler(file_handler)
             except Exception as e:
-                logger.debug(f"⚠️ No se pudo configurar logging a archivo: {e}")
+                logger.debug(f"[WARN] No se pudo configurar logging a archivo: {e}")
         
-        logger.info("✅ Logging de certificados configurado")
+        logger.info("[OK] Logging de certificados configurado")
         return True
         
     except Exception as e:
-        logger.warning(f"⚠️ Error configurando logging: {e}")
+        logger.warning(f"[WARN] Error configurando logging: {e}")
         return False
 
 
@@ -780,9 +780,9 @@ setup_certificate_logging()
 if getattr(settings, 'DEBUG', False):
     create_management_command()
 
-logger.info("✅ Precarga automática de certificados configurada")
-logger.info("✅ Limpieza automática configurada (intervalo: 300s)")
-logger.info("✅ Aplicación de certificados digitales inicializada correctamente")
+logger.info("[OK] Precarga automática de certificados configurada")
+logger.info("[OK] Limpieza automática configurada (intervalo: 300s)")
+logger.info("[OK] Aplicación de certificados digitales inicializada correctamente")
 
 
 # ========== FUNCIONES DE UTILIDAD ==========
@@ -792,7 +792,7 @@ def check_expiring_certificates(days_ahead=30):
     Función para verificar certificados que expiran pronto
     """
     if not DigitalCertificate:
-        logger.warning("⚠️ DigitalCertificate model not available - skipping expiring check")
+        logger.warning("[WARN] DigitalCertificate model not available - skipping expiring check")
         return []
         
     try:
@@ -807,16 +807,16 @@ def check_expiring_certificates(days_ahead=30):
         ).select_related('company')
         
         if expiring_certs.exists():
-            logger.warning(f"⚠️ {expiring_certs.count()} certificados expiran en los próximos {days_ahead} días")
+            logger.warning(f"[WARN] {expiring_certs.count()} certificados expiran en los próximos {days_ahead} días")
             
             for cert in expiring_certs:
                 days_left = (cert.valid_to.date() - timezone.now().date()).days
-                logger.warning(f"⚠️ {cert.company.business_name}: {days_left} días restantes")
+                logger.warning(f"[WARN] {cert.company.business_name}: {days_left} días restantes")
         
         return expiring_certs
         
     except Exception as e:
-        logger.error(f"❌ Error verificando certificados por expirar: {e}")
+        logger.error(f"[ERROR] Error verificando certificados por expirar: {e}")
         return []
 
 
@@ -825,7 +825,7 @@ def refresh_certificate_status():
     Función para actualizar el estado de todos los certificados
     """
     if not DigitalCertificate:
-        logger.warning("⚠️ DigitalCertificate model not available - skipping status refresh")
+        logger.warning("[WARN] DigitalCertificate model not available - skipping status refresh")
         return {'error': 'Model not available'}
         
     try:
@@ -836,7 +836,7 @@ def refresh_certificate_status():
         ).update(status='EXPIRED')
         
         if expired_count > 0:
-            logger.info(f"🔄 {expired_count} certificados marcados como expirados")
+            logger.info(f"[RELOAD] {expired_count} certificados marcados como expirados")
         
         # Verificar certificados por expirar
         expiring_certs = check_expiring_certificates()
@@ -847,7 +847,7 @@ def refresh_certificate_status():
         }
         
     except Exception as e:
-        logger.error(f"❌ Error actualizando estado de certificados: {e}")
+        logger.error(f"[ERROR] Error actualizando estado de certificados: {e}")
         return {'error': str(e)}
 
 
@@ -858,7 +858,7 @@ def get_certificate_statistics():
     Función para obtener estadísticas de certificados
     """
     if not DigitalCertificate:
-        logger.warning("⚠️ DigitalCertificate model not available - returning empty stats")
+        logger.warning("[WARN] DigitalCertificate model not available - returning empty stats")
         return {'error': 'Model not available'}
         
     try:
@@ -880,12 +880,12 @@ def get_certificate_statistics():
         expiring_soon = check_expiring_certificates(30)
         stats['expiring_soon'] = len(expiring_soon)
         
-        logger.info(f"📊 Estadísticas de certificados: {stats}")
+        logger.info(f"[STATS] Estadísticas de certificados: {stats}")
         
         return stats
         
     except Exception as e:
-        logger.error(f"❌ Error obteniendo estadísticas de certificados: {e}")
+        logger.error(f"[ERROR] Error obteniendo estadísticas de certificados: {e}")
         return {'error': str(e)}
 
 
@@ -896,7 +896,7 @@ def initialize_certificate_system():
     Función de inicialización del sistema de certificados
     """
     try:
-        logger.info("🚀 Inicializando sistema de certificados...")
+        logger.info("[START] Inicializando sistema de certificados...")
         
         # Ejecutar precarga
         preload_certificates_on_startup()
@@ -907,7 +907,7 @@ def initialize_certificate_system():
         # Obtener estadísticas
         stats = get_certificate_statistics()
         
-        logger.info("✅ Sistema de certificados inicializado correctamente")
+        logger.info("[OK] Sistema de certificados inicializado correctamente")
         
         return {
             'status': 'OK',
@@ -916,7 +916,7 @@ def initialize_certificate_system():
         }
         
     except Exception as e:
-        logger.error(f"❌ Error inicializando sistema de certificados: {e}")
+        logger.error(f"[ERROR] Error inicializando sistema de certificados: {e}")
         return {
             'status': 'ERROR',
             'error': str(e),

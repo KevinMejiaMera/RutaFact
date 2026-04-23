@@ -80,6 +80,7 @@ LOCAL_APPS = [
     'apps.api',
     'apps.billing',
     'apps.logistics',
+    'apps.tracking',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -233,6 +234,10 @@ DATABASES = {
 # ==========================================
 
 AUTH_USER_MODEL = 'users.User'
+
+# 📍 Google Maps Config
+GOOGLE_MAPS_API_KEY = config('GOOGLE_MAPS_API_KEY', default='')
+
 
 # ==========================================
 # PASSWORD VALIDATION

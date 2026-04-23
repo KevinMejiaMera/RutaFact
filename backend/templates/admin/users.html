@@ -165,6 +165,7 @@
                     <th>Usuario / Email</th>
                     <th>Asignación Actual</th>
                     <th>Rol / Estado</th>
+                    <th style="text-align: center;">GPS</th>
                     <th style="text-align: right;">Gestión de Acceso</th>
                 </tr>
             </thead>
@@ -194,30 +195,43 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if m_user.company == company %}
-                            <select class="form-control" style="background: var(--bg-dark); color: white; border: 1px solid var(--border); font-size: 12px; padding: 5px; border-radius: 8px; cursor: pointer;" 
-                                    onchange="updateUserRole({{ m_user.id }}, this.value)">
-                                <option value="admin" {% if m_user.role == 'admin' %}selected{% endif %}>ADMINISTRADOR</option>
-                                <option value="seller" {% if m_user.role == 'seller' %}selected{% endif %}>VENDEDOR</option>
-                                <option value="dispatcher" {% if m_user.role == 'dispatcher' %}selected{% endif %}>DESPACHADOR</option>
-                                <option value="driver" {% if m_user.role == 'driver' %}selected{% endif %}>TRANSPORTADOR</option>
-                                <option value="client" {% if m_user.role == 'client' %}selected{% endif %}>CLIENTE</option>
-                            </select>
+                        {% if not m_user.company or m_user.company == company %}
+                            <div style="position: relative;">
+                                <select class="form-control" style="background: var(--bg-dark); color: white; border: 1px solid var(--border); font-size: 12px; padding: 5px; border-radius: 8px; cursor: pointer; width: 100%;" 
+                                        onchange="updateUserRole({{ m_user.id }}, this.value, this)">
+                                    <option value="admin" {% if m_user.role == 'admin' %}selected{% endif %}>ADMINISTRADOR</option>
+                                    <option value="seller" {% if m_user.role == 'seller' %}selected{% endif %}>VENDEDOR</option>
+                                    <option value="dispatcher" {% if m_user.role == 'dispatcher' %}selected{% endif %}>DESPACHADOR</option>
+                                    <option value="driver" {% if m_user.role == 'driver' %}selected{% endif %}>TRANSPORTADOR</option>
+                                    <option value="client" {% if m_user.role == 'client' %}selected{% endif %}>CLIENTE</option>
+                                </select>
+                                <div id="status-{{ m_user.id }}" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: none;">
+                                    <i class="fas fa-check" style="color: #4CAF50; font-size: 10px;"></i>
+                                </div>
+                            </div>
                         {% else %}
                             <div style="margin-bottom: 5px;">
                                 <span style="color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">{{ m_user.get_role_display|default:m_user.role }}</span>
                             </div>
                         {% endif %}
                         
-                        <div style="margin-top: 5px;">
-                            {% if m_user.user_status == 'active' %}
-                                <span class="badge badge-active">Activo</span>
-                            {% elif m_user.user_status == 'waiting' %}
-                                <span class="badge badge-waiting">Espera</span>
-                            {% else %}
-                                <span class="badge" style="background: rgba(255,255,255,0.05); color: var(--text-dim);">{{ m_user.user_status|upper }}</span>
-                            {% endif %}
+                        <div style="margin-top: 8px;">
+                            <select class="form-control" 
+                                    style="background: rgba(0,0,0,0.2); color: {% if m_user.user_status == 'active' %}#4CAF50{% elif m_user.user_status == 'suspended' %}#f44336{% else %}#FF9800{% endif %}; border: 1px solid var(--border); font-size: 11px; padding: 3px 8px; border-radius: 20px; cursor: pointer; width: auto; font-weight: bold; text-transform: uppercase;" 
+                                    onchange="updateUserStatus({{ m_user.id }}, this.value, this)">
+                                <option value="active" {% if m_user.user_status == 'active' %}selected{% endif %}>🟢 ACTIVO</option>
+                                <option value="waiting" {% if m_user.user_status == 'waiting' %}selected{% endif %}>🟡 ESPERA</option>
+                                <option value="suspended" {% if m_user.user_status == 'suspended' %}selected{% endif %}>🔴 SUSPENDIDO</option>
+                                <option value="rejected" {% if m_user.user_status == 'rejected' %}selected{% endif %}>✖️ RECHAZADO</option>
+                            </select>
                         </div>
+                    </td>
+                    <td style="text-align: center;">
+                        <div class="tracking-toggle" onclick="toggleTracking({{ m_user.id }}, this)" 
+                             style="cursor: pointer; width: 45px; height: 24px; background: {% if m_user.can_track %}var(--primary){% else %}rgba(255,255,255,0.1){% endif %}; border-radius: 20px; position: relative; transition: 0.3s; margin: 0 auto; border: 1px solid var(--border);">
+                            <div style="width: 18px; height: 18px; background: white; border-radius: 50%; position: absolute; top: 2px; {% if m_user.can_track %}right: 2px;{% else %}left: 2px;{% endif %} transition: 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.2);"></div>
+                        </div>
+                        <div style="font-size: 10px; color: var(--text-dim); margin-top: 5px;">{{ m_user.can_track|yesno:"HABILITADO,BLOQUEADO" }}</div>
                     </td>
                     <td style="text-align: right;">
                         {% if m_user.company == company %}
@@ -245,8 +259,11 @@
 </div>
 
 <script>
-    async function updateUserRole(userId, newRole) {
+    async function updateUserRole(userId, newRole, selectElement) {
         try {
+            // Mostrar estado de carga (opcional)
+            selectElement.style.opacity = "0.5";
+            
             const response = await fetch(`/dashboard/users/${userId}/update_role/`, {
                 method: 'POST',
                 headers: {
@@ -258,18 +275,98 @@
             });
 
             const data = await response.json();
+            selectElement.style.opacity = "1";
 
             if (data.status === 'success') {
-                // Notificación sutil (opcional: podrías usar un toast)
+                // Mostrar checkmark de éxito temporalmente
+                const statusIcon = document.getElementById(`status-${userId}`);
+                if (statusIcon) {
+                    statusIcon.style.display = "block";
+                    setTimeout(() => {
+                        statusIcon.style.display = "none";
+                    }, 2000);
+                }
                 console.log(data.message);
             } else {
                 alert("Error: " + data.message);
-                window.location.reload(); // Revertir cambio visual
+                window.location.reload(); 
             }
         } catch (err) {
             console.error(err);
             alert("Error de conexión al actualizar el rol.");
             window.location.reload();
+        }
+    }
+
+    async function updateUserStatus(userId, newStatus, selectElement) {
+        try {
+            selectElement.style.opacity = "0.5";
+            
+            const response = await fetch(`/dashboard/users/${userId}/update_status/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ status: newStatus })
+            });
+
+            const data = await response.json();
+            selectElement.style.opacity = "1";
+
+            if (data.status === 'success') {
+                // Cambiar color dinámicamente según el estado
+                if (newStatus === 'active') selectElement.style.color = "#4CAF50";
+                else if (newStatus === 'suspended') selectElement.style.color = "#f44336";
+                else selectElement.style.color = "#FF9800";
+                
+                console.log(data.message);
+            } else {
+                alert("Error: " + data.message);
+                window.location.reload(); 
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error de conexión al actualizar el estado.");
+            window.location.reload();
+        }
+    }
+
+    async function toggleTracking(userId, element) {
+        try {
+            const response = await fetch(`/dashboard/users/${userId}/toggle_tracking/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                // Actualizar UI del toggle
+                const knob = element.querySelector('div');
+                const label = element.nextElementSibling;
+                
+                if (data.can_track) {
+                    element.style.background = "var(--primary)";
+                    knob.style.left = "auto";
+                    knob.style.right = "2px";
+                    label.textContent = "HABILITADO";
+                } else {
+                    element.style.background = "rgba(255,255,255,0.1)";
+                    knob.style.right = "auto";
+                    knob.style.left = "2px";
+                    label.textContent = "BLOQUEADO";
+                }
+            } else {
+                alert("Error: " + data.message);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error de conexión al cambiar permiso de GPS.");
         }
     }
 

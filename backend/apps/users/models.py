@@ -117,6 +117,12 @@ class User(AbstractUser):
         verbose_name='Estado del Usuario'
     )
     
+    can_track = models.BooleanField(
+        default=False,
+        verbose_name='Puede Rastrear Ruta',
+        help_text='Indica si el usuario tiene permiso para iniciar rastreo GPS en el móvil.'
+    )
+    
     role = models.CharField(
         max_length=20,
         choices=USER_ROLE_CHOICES,

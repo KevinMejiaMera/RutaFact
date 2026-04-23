@@ -25,7 +25,15 @@ except ImportError:
 
 # 🔥🔥🔥 IMPORTAR VIEWSET NUCLEAR CORRECTO 🔥🔥🔥
 from apps.api.views.company_views import CompanyViewSet as NuclearCompanyViewSet
+from apps.tracking.views import TrackingViewSet
 from apps.api.views.logistics_views import VehicleViewSet, RouteViewSet, RouteStopViewSet
+
+router = DefaultRouter()
+router.register(r'companies', NuclearCompanyViewSet, basename='company')
+router.register(r'tracking', TrackingViewSet, basename='tracking')
+router.register(r'vehicles', VehicleViewSet, basename='vehicle')
+router.register(r'routes', RouteViewSet, basename='route')
+router.register(r'route-stops', RouteStopViewSet, basename='route-stop')
 
 # 🔑🔑🔑 IMPORTAR AUTH VIEWS PARA TOKENS 🔑🔑🔑
 from apps.api.views.auth_views import token_login, token_logout, token_profile, auth_status, token_register
@@ -293,6 +301,7 @@ router = DefaultRouter()
 
 # 🔥🔥🔥 REGISTRAR VIEWSET NUCLEAR CON SEGURIDAD MÁXIMA 🔥🔥🔥
 router.register(r'companies', NuclearCompanyViewSet, basename='company')
+router.register(r'tracking', TrackingViewSet, basename='tracking')
 router.register(r'customers', CustomerViewSet, basename='customer')
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'vehicles', VehicleViewSet, basename='vehicle')

@@ -19,15 +19,15 @@ CertificateUsageLog = None
 
 try:
     from .models import DigitalCertificate, CertificateUsageLog
-    logger.info("✅ Certificate models imported successfully")
+    logger.info("[OK] Certificate models imported successfully")
 except ImportError:
     try:
         from apps.certificates.models import DigitalCertificate, CertificateUsageLog
-        logger.info("✅ Certificate models imported from apps.certificates.models")
+        logger.info("[OK] Certificate models imported from apps.certificates.models")
     except ImportError:
         try:
             from apps.core.models import DigitalCertificate, CertificateUsageLog
-            logger.info("✅ Certificate models imported from apps.core.models")
+            logger.info("[OK] Certificate models imported from apps.core.models")
         except ImportError:
             logger.warning("⚠️ Certificate models not available - serializers will have limited functionality")
 
@@ -658,6 +658,6 @@ def check_serializer_availability():
 # Log de inicialización
 try:
     availability = check_serializer_availability()
-    logger.info(f"📊 Certificate serializers loaded: {availability}")
+    logger.info(f"[STATS] Certificate serializers loaded: {availability}")
 except Exception as e:
-    logger.error(f"❌ Error checking serializer availability: {e}")
+    logger.error(f"[ERROR] Error checking serializer availability: {e}")

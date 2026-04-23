@@ -56,6 +56,9 @@ def token_login(request):
     # Autenticar usuario
     user = authenticate(username=email, password=password)
     if not user:
+        import logging
+        auth_logger = logging.getLogger('apps.api.auth')
+        auth_logger.warning(f"[AUTH] Failed login attempt for email: {email}")
         return Response({
             'error': 'INVALID_CREDENTIALS',
             'message': 'Invalid email or password'
@@ -113,10 +116,9 @@ def token_login(request):
         'user': {
             'id': user.id,
             'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
             'full_name': f"{user.first_name} {user.last_name}".strip(),
-            'role': user.role
+            'role': user.role,
+            'can_track': user.can_track
         },
         'recommendations': {
             'use_company_tokens': True,
@@ -184,7 +186,8 @@ def token_profile(request):
                 'id': request.user.id,
                 'email': request.user.email,
                 'full_name': f"{request.user.first_name} {request.user.last_name}".strip(),
-                'role': request.user.role
+                'role': request.user.role,
+                'can_track': request.user.can_track
             },
             'companies': [
                 {
@@ -229,9 +232,9 @@ def auth_status(request):
                     'id': user.id,
                     'email': user.email,
                     'first_name': user.first_name,
-                    'last_name': user.last_name,
                     'full_name': f"{user.first_name} {user.last_name}".strip(),
-                    'role': user.role
+                    'role': user.role,
+                    'can_track': user.can_track
                 }
             })
     
@@ -312,6 +315,7 @@ def token_register(request):
             'email': user.email,
             'first_name': user.first_name,
             'last_name': user.last_name,
-            'role': user.role
+            'role': user.role,
+            'can_track': user.can_track
         }
     }, status=status.HTTP_201_CREATED)

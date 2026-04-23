@@ -13,8 +13,30 @@ from apps.companies.models import Company
 from apps.sri_integration.models import SRIConfiguration, ElectronicDocument
 from apps.certificates.models import DigitalCertificate
 from django.contrib.auth import get_user_model
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 User = get_user_model()
+
+def notify_user_update(user):
+    """Notificar al usuario vía WebSocket sobre cambios en su perfil"""
+    try:
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'user_{user.id}',
+            {
+                'type': 'user_update',
+                'data': {
+                    'id': user.id,
+                    'can_track': user.can_track,
+                    'user_status': user.user_status,
+                    'role': user.role,
+                    'is_active': user.is_active
+                }
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error notifying user via WS: {e}")
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +210,7 @@ def toggle_user_assignment(request, user_id):
             status_text = "granted"
         
         target_user.save()
+        notify_user_update(target_user)
         return JsonResponse({
             'status': 'success', 
             'message': message,
@@ -211,15 +234,16 @@ def update_user_role(request, user_id):
             if new_role not in dict(User.USER_ROLE_CHOICES):
                 return JsonResponse({'status': 'error', 'message': f'Rol inválido: {new_role}'}, status=400)
             
-            # Solo permitir si el usuario pertenece a la misma empresa o el admin es superusuario
+            # Solo permitir si el usuario pertenece a la misma empresa, no tiene empresa, o el admin es superusuario
             companies = get_user_companies_secure(request.user)
             company = companies.first()
             
-            if not request.user.is_superuser and target_user.company != company:
-                 return JsonResponse({'status': 'error', 'message': 'No tienes permiso para editar este usuario'}, status=403)
+            if not request.user.is_superuser and target_user.company and target_user.company != company:
+                 return JsonResponse({'status': 'error', 'message': 'No tienes permiso para editar este usuario (ya pertenece a otra empresa)'}, status=403)
             
             target_user.role = new_role
             target_user.save()
+            notify_user_update(target_user)
             
             return JsonResponse({
                 'status': 'success', 
@@ -228,4 +252,73 @@ def update_user_role(request, user_id):
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
             
+    return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+
+@login_required
+@user_passes_test(is_admin)
+def update_user_status(request, user_id):
+    """Actualizar el estado del usuario (active, waiting, suspended, rejected)"""
+    if request.method == 'POST':
+        import json
+        try:
+            data = json.loads(request.body)
+            new_status = data.get('status')
+            
+            target_user = get_object_or_404(User, id=user_id)
+            
+            # Validar estado
+            if new_status not in dict(User.USER_STATUS_CHOICES):
+                return JsonResponse({'status': 'error', 'message': f'Estado inválido: {new_status}'}, status=400)
+            
+            # Solo permitir si el admin tiene permiso sobre la empresa o es superusuario
+            companies = get_user_companies_secure(request.user)
+            company = companies.first()
+            
+            if not request.user.is_superuser and target_user.company and target_user.company != company:
+                 return JsonResponse({'status': 'error', 'message': 'No tienes permiso para editar este usuario'}, status=403)
+            
+            target_user.user_status = new_status
+            
+            # Sincronizar con is_active de Django si es necesario
+            if new_status == 'active':
+                target_user.is_active = True
+            elif new_status in ['suspended', 'rejected']:
+                target_user.is_active = False
+                
+            target_user.save()
+            notify_user_update(target_user)
+            
+            return JsonResponse({
+                'status': 'success', 
+                'message': f'Estado de {target_user.email} actualizado a {target_user.get_user_status_display()}'
+            })
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+            
+    return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+
+@login_required
+@user_passes_test(is_admin)
+def toggle_user_tracking(request, user_id):
+    """Activar/Desactivar permiso de rastreo GPS"""
+    if request.method == 'POST':
+        target_user = get_object_or_404(User, id=user_id)
+        
+        # Validar permisos (admin de empresa o superusuario)
+        companies = get_user_companies_secure(request.user)
+        company = companies.first()
+        
+        if not request.user.is_superuser and target_user.company and target_user.company != company:
+             return JsonResponse({'status': 'error', 'message': 'No tienes permiso para editar este usuario'}, status=403)
+        
+        target_user.can_track = not target_user.can_track
+        target_user.save()
+        notify_user_update(target_user)
+        
+        return JsonResponse({
+            'status': 'success', 
+            'message': f'Rastreo {"activado" if target_user.can_track else "desactivado"} para {target_user.email}',
+            'can_track': target_user.can_track
+        })
+        
     return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)

@@ -47,6 +47,13 @@ urlpatterns = [
     path('dashboard/users/', core_views.admin_users_view, name='admin_users'),
     path('dashboard/users/<int:user_id>/toggle/', core_views.toggle_user_assignment, name='toggle_user_assignment'),
     path('dashboard/users/<int:user_id>/update_role/', core_views.update_user_role, name='update_user_role'),
+    path('dashboard/users/<int:user_id>/update_status/', core_views.update_user_status, name='update_user_status'),
+    path('dashboard/users/<int:user_id>/toggle_tracking/', core_views.toggle_user_tracking, name='toggle_user_tracking'),
+    
+    # 📍 TRACKING URLs
+    path('dashboard/tracking/', include([
+        path('', include('apps.tracking.urls')),
+    ])),
     
     # 🔑 API CON DUAL TOKEN AUTHENTICATION - ACTIVADA
     path('api/', include('apps.api.urls')),
@@ -65,7 +72,7 @@ urlpatterns = [
 # ==========================================
 
 if settings.DEBUG:
-    print("🔧 Configurando URLs para DESARROLLO...")
+    print("[CONFIG] Configurando URLs para DESARROLLO...")
     
     # Django Debug Toolbar
     if 'debug_toolbar' in settings.INSTALLED_APPS:
@@ -74,23 +81,23 @@ if settings.DEBUG:
             urlpatterns = [
                 path('__debug__/', include(debug_toolbar.urls)),
             ] + urlpatterns
-            print("✅ Debug Toolbar activado en /__debug__/")
+            print("[OK] Debug Toolbar activado en /__debug__/")
         except ImportError:
-            print("⚠️  Debug Toolbar configurado pero no instalado")
+            print("[WARN] Debug Toolbar configurado pero no instalado")
     
     # Servir archivos media y static en desarrollo
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
     
-    print(f"✅ Archivos estáticos servidos desde: {settings.STATIC_URL}")
-    print(f"✅ Archivos media servidos desde: {settings.MEDIA_URL}")
+    print(f"[OK] Archivos estaticos servidos desde: {settings.STATIC_URL}")
+    print(f"[OK] Archivos media servidos desde: {settings.MEDIA_URL}")
 
 # ==========================================
 # CONFIGURACIÓN PARA PRODUCCIÓN
 # ==========================================
 
 else:  # if not settings.DEBUG
-    print("🚀 Configurando URLs para PRODUCCIÓN...")
+    print("[CONFIG] Configurando URLs para PRODUCCION...")
     
     # Health checks para load balancers
     urlpatterns += [
@@ -98,10 +105,10 @@ else:  # if not settings.DEBUG
         path('status/', lambda request: HttpResponse("active", content_type='text/plain'), name='status'),
     ]
     
-    print("✅ URLs de producción configuradas")
+    print("[OK] URLs de produccion configuradas")
 
 # ==========================================
 # ==========================================
 # INFO (MANTENIDA POR SI ES ÚTIL EN LOGS)
 # ==========================================
-print("✅ Configuraciones de URLs solo API OK")
+print("[OK] Configuraciones de URLs solo API OK")

@@ -82,3 +82,41 @@ class QueueConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error checking company access in WS: {e}")
             return False
+
+class UserConsumer(AsyncWebsocketConsumer):
+    """
+    Consumer para notificaciones personalizadas al usuario
+    ✅ PERMISOS (can_track, role)
+    ✅ ESTADO (active, suspended)
+    """
+    
+    async def connect(self):
+        self.user = self.scope["user"]
+        
+        if not self.user.is_authenticated:
+            await self.close()
+            return
+            
+        self.room_group_name = f'user_{self.user.id}'
+        
+        await self.channel_layer.group_add(
+            self.room_group_name,
+            self.channel_name
+        )
+        
+        await self.accept()
+        logger.info(f"👤 [WS] User {self.user.id} connected for personal notifications")
+
+    async def disconnect(self, close_code):
+        if hasattr(self, 'room_group_name'):
+            await self.channel_layer.group_discard(
+                self.room_group_name,
+                self.channel_name
+            )
+
+    async def user_update(self, event):
+        """Notificación de cambio en el perfil/permisos del usuario"""
+        await self.send(text_data=json.dumps({
+            'type': 'user_update',
+            'data': event['data']
+        }))
