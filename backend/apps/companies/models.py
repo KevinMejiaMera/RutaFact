@@ -340,26 +340,27 @@ class Company(models.Model):
         
         # Validar antes de guardar
         self.full_clean()
-        super().save(*args, **kwargs)
+        super(Company, self).save(*args, **kwargs)
 
-        # ✅ Sincronizar con SRIConfiguration para mantener concordancia entre paneles
-        # Usamos .update() para evitar bucles de recursión con SRIConfiguration.save()
+        # ✅ Sincronizar con SRIConfiguration con los valores ACTUALES del modelo
         try:
-            if hasattr(self, 'sri_configuration'):
-                from apps.sri_integration.models import SRIConfiguration
-                SRIConfiguration.objects.filter(pk=self.sri_configuration.pk).update(
-                    environment='TEST' if self.ambiente_sri == '1' else 'PRODUCTION',
-                    establishment_code=self.codigo_establecimiento,
-                    emission_point=self.codigo_punto_emision,
-                    invoice_sequence=self.secuencial_factura,
-                    credit_note_sequence=self.secuencial_nota_credito,
-                    debit_note_sequence=self.secuencial_nota_debito,
-                    retention_sequence=self.secuencial_retencion,
-                    accounting_required=(self.obligado_contabilidad == 'SI'),
-                    special_taxpayer=bool(self.contribuyente_especial),
-                    special_taxpayer_number=self.contribuyente_especial or '',
-                    regimen=self.regimen
-                )
+            from apps.sri_integration.models import SRIConfiguration
+            SRIConfiguration.objects.update_or_create(
+                company=self,
+                defaults={
+                    'environment': 'TEST' if self.ambiente_sri == '1' else 'PRODUCTION',
+                    'establishment_code': self.codigo_establecimiento,
+                    'emission_point': self.codigo_punto_emision,
+                    'invoice_sequence': self.secuencial_factura,
+                    'credit_note_sequence': self.secuencial_nota_credito,
+                    'debit_note_sequence': self.secuencial_nota_debito,
+                    'retention_sequence': self.secuencial_retencion,
+                    'accounting_required': (self.obligado_contabilidad == 'SI'),
+                    'special_taxpayer': bool(self.contribuyente_especial),
+                    'special_taxpayer_number': self.contribuyente_especial or '',
+                    'regimen': self.regimen
+                }
+            )
             
             # 3. Sincronizar también el ambiente en el Certificado Digital si existe
             if hasattr(self, 'digital_certificate'):

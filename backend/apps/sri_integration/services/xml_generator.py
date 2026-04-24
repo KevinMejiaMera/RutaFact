@@ -49,7 +49,13 @@ class XMLGeneratorSRI2025:
     def __init__(self, document):
         self.document = document
         self.company = document.company
-        self.sri_config = self.company.sri_configuration
+        
+        # Validar existencia de configuración SRI
+        try:
+            self.sri_config = self.company.sri_configuration
+        except Exception:
+            logger.error(f"❌ La empresa {self.company.id} no tiene una configuración SRI válida.")
+            raise ValueError(f"ERROR CRÍTICO: La empresa '{self.company.business_name}' no tiene configurado el SRI (Establecimiento, Punto de Emisión, etc.).")
         
         # Crear directorio base para XMLs si no existe
         self.xml_base_dir = os.path.join(settings.BASE_DIR, 'storage', 'invoices', 'xml')
@@ -123,8 +129,51 @@ class XMLGeneratorSRI2025:
             
             # Detalles
             detalles = SubElement(factura, 'detalles')
+            
+            # 1. Obtener ítems desde relación o desde additional_data (POS)
+            items_to_process = []
             if hasattr(self.document, 'items') and self.document.items.exists():
-                for item in self.document.items.all():
+                items_to_process = list(self.document.items.all())
+            elif isinstance(self.document.additional_data, dict) and 'pos_items' in self.document.additional_data:
+                # Convertir dicts de POS a objetos "fake" para el generador
+                from types import SimpleNamespace
+                for item_dict in self.document.additional_data['pos_items']:
+                    from apps.invoicing.models import ProductTemplate
+                    prod_name = "Producto"
+                    tax_rate = 15.0
+                    try:
+                        # Prioridad 1: Valor enviado desde el POS (validando que sea numérico)
+                        pos_tax = item_dict.get('tax_rate')
+                        if pos_tax is not None:
+                            try:
+                                tax_rate = float(pos_tax)
+                            except (ValueError, TypeError):
+                                # Si falla (ej. era la ruta de la imagen por el bug anterior), buscar en BD
+                                p = ProductTemplate.objects.get(id=item_dict['id'])
+                                tax_rate = float(p.tax_rate)
+                                prod_name = p.name
+                        else:
+                            # Prioridad 2: Buscar en la base de datos
+                            p = ProductTemplate.objects.get(id=item_dict['id'])
+                            prod_name = p.name
+                            tax_rate = float(p.tax_rate)
+                    except Exception as e:
+                        logger.warning(f"Error recuperando datos para item POS {item_dict.get('id')}: {e}")
+
+                    fake_item = SimpleNamespace(
+                        main_code=str(item_dict.get('id', 'PROD001')),
+                        description=prod_name,
+                        quantity=Decimal(str(item_dict.get('quantity', 1))),
+                        unit_price=Decimal(str(item_dict.get('price', 0))),
+                        discount=Decimal(str(item_dict.get('discount', 0))),
+                        subtotal=Decimal(str(item_dict.get('quantity', 1))) * Decimal(str(item_dict.get('price', 0))),
+                        tax_rate=tax_rate,
+                        additional_details={}
+                    )
+                    items_to_process.append(fake_item)
+
+            if items_to_process:
+                for item in items_to_process:
                     detalle = self._create_detalle_factura(item)
                     detalles.append(detalle)
             else:
@@ -707,16 +756,19 @@ class XMLGeneratorSRI2025:
         return impuesto
     
     def _create_default_tax(self, item):
-        """Crea impuesto por defecto (IVA 15% - código 4)"""
+        """Crea impuesto por defecto basado en la tarifa del item"""
         impuesto = Element('impuesto')
         
+        rate = float(getattr(item, 'tax_rate', 15))
+        percentage_code = self._get_iva_percentage_code(rate)
+        
         SubElement(impuesto, 'codigo').text = '2'  # IVA
-        SubElement(impuesto, 'codigoPorcentaje').text = '4'  # 15% (código actualizado)
-        SubElement(impuesto, 'tarifa').text = '15.00'
+        SubElement(impuesto, 'codigoPorcentaje').text = percentage_code
+        SubElement(impuesto, 'tarifa').text = self._format_decimal(rate)
         
         subtotal = float(getattr(item, 'subtotal', 0))
         SubElement(impuesto, 'baseImponible').text = self._format_decimal(subtotal)
-        SubElement(impuesto, 'valor').text = self._format_decimal(subtotal * 0.15)
+        SubElement(impuesto, 'valor').text = self._format_decimal(subtotal * (rate / 100))
         
         return impuesto
     
@@ -733,12 +785,21 @@ class XMLGeneratorSRI2025:
         SubElement(detalle, 'descuento').text = '0.00'
         SubElement(detalle, 'precioTotalSinImpuesto').text = self._format_decimal(subtotal)
         
-        # Impuestos por defecto
+        # Impuestos por defecto basados en el total del documento
         impuestos = SubElement(detalle, 'impuestos')
         impuesto = Element('impuesto')
+        
+        # Intentar obtener la tarifa del primer item si existe
+        rate = 15.00
+        if hasattr(self.document, 'items') and self.document.items.exists():
+            first_item = self.document.items.first()
+            rate = float(getattr(first_item, 'tax_rate', 15))
+        
+        percentage_code = self._get_iva_percentage_code(rate)
+        
         SubElement(impuesto, 'codigo').text = '2'
-        SubElement(impuesto, 'codigoPorcentaje').text = '4'
-        SubElement(impuesto, 'tarifa').text = '15.00'
+        SubElement(impuesto, 'codigoPorcentaje').text = percentage_code
+        SubElement(impuesto, 'tarifa').text = self._format_decimal(rate)
         SubElement(impuesto, 'baseImponible').text = self._format_decimal(subtotal)
         SubElement(impuesto, 'valor').text = self._format_decimal(float(self.document.total_tax))
         impuestos.append(impuesto)
@@ -747,6 +808,23 @@ class XMLGeneratorSRI2025:
     
     # ========== MÉTODOS DE UTILIDAD ==========
     
+    def _get_iva_percentage_code(self, percentage):
+        """Mapea el porcentaje de IVA al código requerido por el SRI (Tabla 17)"""
+        try:
+            p = float(percentage)
+            if p == 0: return '0'
+            if p == 12: return '2'
+            if p == 14: return '3'
+            if p == 15: return '4'
+            if p == 5: return '5'
+            if p == 8: return '8'
+            if p == 13: return '10'
+            # Fallback inteligente: si no coincide exactamente, buscamos el más cercano o usamos 4
+            logger.warning(f"Porcentaje de IVA {p}% no estándar. Usando código 4 (15%) por defecto.")
+            return '4'
+        except:
+            return '4'
+
     def _format_decimal(self, value, max_decimals=2):
         """Formatea decimales según especificaciones SRI"""
         try:
@@ -800,13 +878,29 @@ class XMLGeneratorSRI2025:
                 if hasattr(tax, 'additional_discount') and tax.additional_discount:
                     taxes_summary[key]['descuentoAdicional'] += Decimal(str(tax.additional_discount))
         else:
-            # Impuesto por defecto
-            taxes_summary[('2', '4')] = {
+            # Impuesto por defecto basado en los totales calculados del documento
+            rate = 15.00
+            # Si el total_tax es 0 y el subtotal_without_tax > 0, es probable que sea IVA 0%
+            if float(self.document.total_tax) == 0 and float(self.document.subtotal_without_tax) > 0:
+                rate = 0.00
+            elif float(self.document.subtotal_without_tax) > 0:
+                # Calcular tarifa implícita
+                rate = (float(self.document.total_tax) / float(self.document.subtotal_without_tax)) * 100
+                # Redondear a las tarifas estándar si está muy cerca
+                standard_rates = [15.0, 12.0, 8.0, 5.0, 0.0]
+                for sr in standard_rates:
+                    if abs(rate - sr) < 0.1:
+                        rate = sr
+                        break
+            
+            percentage_code = self._get_iva_percentage_code(rate)
+            
+            taxes_summary[('2', percentage_code)] = {
                 'base': Decimal(str(self.document.subtotal_without_tax)),
                 'valor': Decimal(str(self.document.total_tax)),
                 'codigo': '2',
-                'codigoPorcentaje': '4',  # Código 4 = IVA 15%
-                'tarifa': Decimal('15.00'),
+                'codigoPorcentaje': percentage_code,
+                'tarifa': Decimal(str(rate)),
                 'descuentoAdicional': Decimal('0')
             }
         

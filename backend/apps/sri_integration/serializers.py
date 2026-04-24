@@ -80,9 +80,25 @@ class CreateInvoiceSerializer(serializers.Serializer):
         return value
 
 class DocumentItemSerializer(serializers.ModelSerializer):
+    product_image = serializers.SerializerMethodField()
+    
     class Meta:
         model = DocumentItem
         fields = '__all__'
+        
+    def get_product_image(self, obj):
+        try:
+            from apps.invoicing.models import ProductTemplate
+            # Intentar encontrar el producto por su código principal
+            product = ProductTemplate.objects.filter(
+                main_code=obj.main_code, 
+                company=obj.document.company
+            ).first()
+            if product and product.image:
+                return product.image.url
+        except:
+            pass
+        return None
 
 class DocumentTaxSerializer(serializers.ModelSerializer):
     class Meta:

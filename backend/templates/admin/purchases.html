@@ -1,0 +1,431 @@
+{% extends "base.html" %}
+
+{% block page_title %}Compras e Inventario{% endblock %}
+
+{% block extra_css %}
+<style>
+    .purchases-container {
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    /* Ocultar flechas de inputs numéricos */
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    input[type=number] {
+        -moz-appearance: textfield;
+    }
+    
+    .table-card {
+        background: var(--bg-card);
+        border-radius: 24px;
+        border: 1px solid var(--border);
+        overflow-x: auto;
+        margin-bottom: 30px;
+    }
+
+    .table-header {
+        padding: 25px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    th {
+        text-align: left;
+        padding: 15px 25px;
+        color: var(--text-dim);
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        background: rgba(255,255,255,0.02);
+    }
+
+    td {
+        padding: 20px 25px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    /* Modal Styles */
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.8);
+        z-index: 1000;
+        backdrop-filter: blur(5px);
+        overflow-y: auto;
+    }
+
+    .modal-content {
+        background: var(--bg-card);
+        width: 95%;
+        max-width: 900px;
+        margin: 30px auto;
+        border-radius: 24px;
+        border: 1px solid var(--border);
+        padding: 40px;
+        position: relative;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        color: var(--text-dim);
+        font-size: 14px;
+        margin-bottom: 8px;
+    }
+
+    .form-control {
+        width: 100%;
+        background: var(--bg-dark);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 15px;
+        color: white;
+        font-family: inherit;
+        outline: none;
+    }
+
+    .item-row input {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px;
+        color: white;
+        width: 100%;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="purchases-container">
+    <div class="table-card">
+        <div class="table-header">
+            <div>
+                <h3 style="font-size: 18px; color: white;">Facturas de Compra</h3>
+                <p style="color: var(--text-dim); font-size: 14px; margin-top: 5px;">Historial de ingresos de mercadería al sistema</p>
+            </div>
+            <button class="btn-primary" onclick="openModal()">
+                <i class="fas fa-file-import"></i> Registrar Nueva Compra
+            </button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Nro Factura</th>
+                    <th>Proveedor</th>
+                    <th>Total</th>
+                    <th>Estado</th>
+                    <th style="text-align: right;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for purchase in purchases %}
+                <tr>
+                    <td>{{ purchase.issue_date|date:"d/m/Y" }}</td>
+                    <td><code style="color: var(--primary);">{{ purchase.invoice_number }}</code></td>
+                    <td>
+                        <div style="font-weight: 600;">{{ purchase.provider.name }}</div>
+                        <div style="font-size: 12px; color: var(--text-dim);">RUC: {{ purchase.provider.identification }}</div>
+                    </td>
+                    <td style="font-weight: 700;">${{ purchase.total_amount }}</td>
+                    <td>
+                        {% if purchase.is_processed %}
+                            <span style="color: #4CAF50; font-size: 12px;"><i class="fas fa-check-circle"></i> PROCESADO</span>
+                        {% else %}
+                            <span style="color: var(--accent); font-size: 12px;"><i class="fas fa-clock"></i> PENDIENTE</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                            <button title="Ver Detalles" class="action-btn" onclick="showPurchaseDetails({{ purchase.id }})"><i class="fas fa-eye"></i></button>
+                            <a href="{% url 'admin_delete_purchase' purchase.id %}" title="Eliminar" class="action-btn" onclick="return confirm('¿Está seguro de eliminar esta compra? El stock será REVERTIDO automáticamente.');"><i class="fas fa-trash" style="color: #ff5c5c;"></i></a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 60px;">
+                        <i class="fas fa-shopping-basket fa-4x" style="margin-bottom: 20px; opacity: 0.1;"></i>
+                        <h4 style="color: var(--text-dim);">No hay compras registradas</h4>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal Nueva Compra -->
+<div id="purchaseModal" class="modal">
+    <div class="modal-content">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+            <h3 style="font-size: 22px; color: white;">Registrar Factura de Compra</h3>
+            <i class="fas fa-times" style="cursor: pointer; color: var(--text-dim);" onclick="closeModal()"></i>
+        </div>
+        
+        <form id="purchaseForm" method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label>Proveedor</label>
+                    <select name="provider" class="form-control" required>
+                        <option value="">Seleccione un proveedor...</option>
+                        {% for provider in providers %}
+                            <option value="{{ provider.id }}">{{ provider.name }} ({{ provider.identification }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Fecha de Emisión</label>
+                    <input type="date" name="issue_date" class="form-control" required>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label>Número de Factura</label>
+                    <input type="text" name="invoice_number" class="form-control" placeholder="001-001-000000001" required>
+                </div>
+                <div class="form-group">
+                    <label>Notas / Observaciones</label>
+                    <input type="text" name="notes" class="form-control" placeholder="Opcional">
+                </div>
+            </div>
+
+            <div style="background: rgba(108, 99, 255, 0.1); border-left: 4px solid var(--primary); padding: 12px 20px; border-radius: 8px; margin-bottom: 25px;">
+                <p style="font-size: 13px; color: white; margin: 0;">
+                    <i class="fas fa-info-circle"></i> <b>Tip:</b> El costo ingresado debe ser el <b>total incluido IVA</b>. El sistema desglosará el impuesto automáticamente según el % que indiques (0, 15, etc).
+                </p>
+            </div>
+
+            <h4 style="margin: 20px 0 15px; color: var(--primary); font-size: 16px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">Productos / Ítems</h4>
+            
+            <div id="items-container">
+                <table id="items-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40%;">Producto</th>
+                            <th style="width: 12%;">Cantidad</th>
+                            <th style="width: 18%;">Costo (Inc. IVA)</th>
+                            <th style="width: 15%;">IVA (%)</th>
+                            <th style="width: 15%;">Total</th>
+                            <th style="width: 6%;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="items-body">
+                        <tr class="item-row">
+                            <td>
+                                <input type="text" name="product_name[]" class="form-control" placeholder="Nombre del producto..." required style="padding: 8px;">
+                                <div style="margin-top: 8px;">
+                                    <label style="font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 5px; cursor: pointer; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 5px; width: fit-content;">
+                                        <i class="fas fa-camera"></i> Foto
+                                        <input type="file" name="product_image[]" accept="image/*" style="display: none;" onchange="previewImage(this)">
+                                    </label>
+                                    <div class="img-preview" style="display: none; margin-top: 5px;">
+                                        <img src="" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover; border: 1px solid var(--border);">
+                                    </div>
+                                </div>
+                            </td>
+                            <td><input type="number" name="quantity[]" step="0.01" value="1" onchange="calculateRow(this)" class="form-control no-spin" style="text-align: center;"></td>
+                            <td><input type="number" name="cost[]" step="0.0001" value="0.00" onchange="calculateRow(this)" class="form-control no-spin" style="text-align: right;"></td>
+                            <td><input type="number" name="tax_rate[]" step="0.01" value="15.00" onchange="calculateRow(this)" class="form-control no-spin" style="text-align: center;"></td>
+                            <td class="row-subtotal" style="font-weight: 600; color: white; text-align: right;">$0.00</td>
+                            <td style="text-align: center;"><button type="button" onclick="removeRow(this)" style="background: none; border: none; color: #ff5c5c; cursor: pointer; font-size: 16px;"><i class="fas fa-times-circle"></i></button></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <button type="button" class="btn-primary" style="margin-top: 15px; background: rgba(108, 99, 255, 0.1); color: var(--primary); width: 100%; border: 1px dashed var(--primary);" onclick="addRow()">
+                    <i class="fas fa-plus"></i> Agregar Línea
+                </button>
+            </div>
+
+            <div style="margin-top: 30px; display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 20px; border-radius: 15px;">
+                <div>
+                    <span style="color: var(--text-dim);">TOTAL COMPRA:</span>
+                    <span id="total-display" style="font-size: 24px; font-weight: 700; color: white; margin-left: 15px;">$0.00</span>
+                    <input type="hidden" name="total_amount" id="total_amount_input" value="0">
+                </div>
+                <div style="display: flex; gap: 15px;">
+                    <button type="button" class="btn-primary" style="background: transparent; border: 1px solid var(--border); color: white;" onclick="closeModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary">Guardar e Ingresar Stock</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function openModal() {
+        document.getElementById('purchaseModal').style.display = 'block';
+    }
+
+    function closeModal() {
+        document.getElementById('purchaseModal').style.display = 'none';
+    }
+
+    function addRow() {
+        const body = document.getElementById('items-body');
+        const rows = body.querySelectorAll('.item-row');
+        const newRow = rows[0].cloneNode(true);
+        
+        // Limpiar valores
+        newRow.querySelector('input[name="product_name[]"]').value = "";
+        newRow.querySelector('input[name="quantity[]"]').value = "1";
+        newRow.querySelector('input[name="cost[]"]').value = "0.00";
+        newRow.querySelector('input[name="tax_rate[]"]').value = "15.00";
+        newRow.querySelector('input[name="product_image[]"]').value = "";
+        newRow.querySelector('.img-preview').style.display = 'none';
+        newRow.querySelector('.row-subtotal').textContent = "$0.00";
+        
+        body.appendChild(newRow);
+    }
+
+    function previewImage(input) {
+        const preview = input.closest('td').querySelector('.img-preview');
+        const img = preview.querySelector('img');
+        
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                img.src = e.target.result;
+                preview.style.display = 'block';
+            }
+            reader.readAsDataURL(input.files[0]);
+        } else {
+            preview.style.display = 'none';
+        }
+    }
+
+    function removeRow(btn) {
+        const rows = document.querySelectorAll('.item-row');
+        if (rows.length > 1) {
+            btn.closest('tr').remove();
+            calculateTotal();
+        }
+    }
+
+    function calculateRow(input) {
+        const row = input.closest('tr');
+        const qty = parseFloat(row.querySelector('input[name="quantity[]"]').value) || 0;
+        const costInclusive = parseFloat(row.querySelector('input[name="cost[]"]').value) || 0;
+        
+        // El costo ya incluye IVA, por lo que el total de la línea es cantidad * costo
+        const total = qty * costInclusive;
+        
+        row.querySelector('.row-subtotal').textContent = '$' + total.toFixed(2);
+        calculateTotal();
+    }
+
+    function calculateTotal() {
+        let total = 0;
+        document.querySelectorAll('.row-subtotal').forEach(el => {
+            total += parseFloat(el.textContent.replace('$', '')) || 0;
+        });
+        document.getElementById('total-display').textContent = '$' + total.toFixed(2);
+    }
+
+    function calculateTotal() {
+        let total = 0;
+        document.querySelectorAll('.item-row').forEach(row => {
+            const qty = parseFloat(row.querySelector('input[name="quantity[]"]').value) || 0;
+            const cost = parseFloat(row.querySelector('input[name="cost[]"]').value) || 0;
+            total += (qty * cost);
+        });
+        
+        document.getElementById('total-display').textContent = '$' + total.toFixed(2);
+        document.getElementById('total_amount_input').value = total.toFixed(2);
+    }
+    async function showPurchaseDetails(id) {
+        const data = await fetchDetails(`/api/purchases/${id}/`);
+        if (!data) return;
+
+        const itemsHtml = data.items.map(item => `
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid var(--border);">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        ${item.product_image ? `<img src="${item.product_image}" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover;">` : `<i class="fas fa-box" style="color: var(--text-dim);"></i>`}
+                        <span style="color: white;">${item.product_name}</span>
+                    </div>
+                </td>
+                <td style="padding: 10px; border-bottom: 1px solid var(--border); color: var(--text-dim); text-align: center;">${item.quantity}</td>
+                <td style="padding: 10px; border-bottom: 1px solid var(--border); color: var(--text-dim); text-align: right;">$${parseFloat(item.cost).toFixed(2)}</td>
+                <td style="padding: 10px; border-bottom: 1px solid var(--border); color: white; text-align: right; font-weight: 600;">$${parseFloat(item.subtotal).toFixed(2)}</td>
+            </tr>
+        `).join('');
+
+        document.getElementById('modalBody').innerHTML = `
+            <div style="border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="color: white; font-size: 22px;">Factura ${data.invoice_number}</h3>
+                    <span style="background: rgba(76, 175, 80, 0.1); color: #4CAF50; padding: 5px 12px; border-radius: 50px; font-size: 12px; font-weight: 600;">PROCESADA</span>
+                </div>
+                <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <div style="font-size: 12px; color: var(--text-dim);">PROVEEDOR</div>
+                        <div style="color: white; font-weight: 600;">${data.provider_name}</div>
+                        <div style="font-size: 13px; color: var(--text-dim);">RUC: ${data.provider_ruc}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 12px; color: var(--text-dim);">FECHA EMISIÓN</div>
+                        <div style="color: white; font-weight: 600;">${new Date(data.issue_date).toLocaleDateString()}</div>
+                    </div>
+                </div>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr>
+                        <th style="text-align: left; padding: 10px; font-size: 12px; color: var(--text-dim); text-transform: uppercase;">Producto</th>
+                        <th style="text-align: center; padding: 10px; font-size: 12px; color: var(--text-dim); text-transform: uppercase;">Cant.</th>
+                        <th style="text-align: right; padding: 10px; font-size: 12px; color: var(--text-dim); text-transform: uppercase;">Costo</th>
+                        <th style="text-align: right; padding: 10px; font-size: 12px; color: var(--text-dim); text-transform: uppercase;">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${itemsHtml}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3" style="padding: 20px 10px; text-align: right; color: var(--text-dim); font-weight: 600;">TOTAL FACTURA:</td>
+                        <td style="padding: 20px 10px; text-align: right; color: var(--primary); font-size: 20px; font-weight: 700;">$${parseFloat(data.total_amount).toFixed(2)}</td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            ${data.notes ? `
+            <div style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.02); border-radius: 12px; border: 1px solid var(--border);">
+                <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 5px;">NOTAS:</div>
+                <div style="color: var(--text-dim); font-size: 14px;">${data.notes}</div>
+            </div>` : ''}
+
+            <div style="margin-top: 30px; display: flex; gap: 10px; justify-content: flex-end;">
+                <button class="btn-primary" style="background: transparent; border: 1px solid var(--border); color: white;" onclick="closeDetailModal()">Cerrar</button>
+                <button class="btn-primary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+            </div>
+        `;
+    }
+</script>
+{% endblock %}

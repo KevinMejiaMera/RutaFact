@@ -50,6 +50,7 @@ services:
       - REDIS_HOST=rutafact-redis
       - DB_HOST=rutafact-db
       - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
     env_file:
       - .env
     restart: unless-stopped

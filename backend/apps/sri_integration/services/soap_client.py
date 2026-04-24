@@ -941,9 +941,10 @@ class SRISOAPClient:
                     error_messages = self._extract_zeep_auth_errors(autorizacion)
                     error_text = "; ".join(error_messages) if error_messages else "Document not authorized"
                     
-                    # ✅ NO cambiar a ERROR si estaba en SENT
-                    if document.status != 'SENT':
-                        document.status = 'REJECTED'
+                    # Guardar el mensaje legible para la UI
+                    response_data['mensaje'] = error_text
+                    
+                    document.status = 'REJECTED'
                     document.sri_response = response_data
                     document.save()
                     
@@ -1130,15 +1131,12 @@ class SRISOAPClient:
                         error_messages = self._extract_authorization_errors_ultra_fixed(autorizacion_elem)
                         error_text = "; ".join(error_messages) if error_messages else "Document not authorized"
                         
-                        # ✅ NO cambiar a ERROR si estaba en SENT - mantener el estado exitoso de recepción
-                        if document.status == 'SENT':
-                            logger.warning(f"⚠️ [SRI_AUTH_ULTRA] Document was SENT but not authorized - keeping SENT status")
-                            document.sri_response = response_data
-                            document.save()
-                        else:
-                            document.status = 'REJECTED'
-                            document.sri_response = response_data
-                            document.save()
+                        # Guardar el mensaje legible para la UI
+                        response_data['mensaje'] = error_text
+                        
+                        document.status = 'REJECTED'
+                        document.sri_response = response_data
+                        document.save()
                         
                         logger.warning(f"⚠️ [SRI_AUTH_ULTRA] Document not authorized: {error_text}")
                         return False, f'Document not authorized: {error_text}'

@@ -410,40 +410,10 @@ class SRIConfiguration(BaseModel):
         # 2. Sincronizar con Company para mantener concordancia entre paneles
         try:
             company = self.company
-            
-            # Sincronizar ambiente (TEST='1', PRODUCTION='2')
-            company.ambiente_sri = '1' if self.environment == 'TEST' else '2'
-            
-            # Sincronizar códigos
-            company.codigo_establecimiento = self.establishment_code or '001'
-            company.codigo_punto_emision = self.emission_point or '001'
-            
-            # Sincronizar secuenciales
-            company.secuencial_factura = self.invoice_sequence or 1
-            company.secuencial_nota_credito = self.credit_note_sequence or 1
-            company.secuencial_nota_debito = self.debit_note_sequence or 1
-            company.secuencial_retencion = self.retention_sequence or 1
-            
-            # Sincronizar campos adicionales (obligado contabilidad y contribuyente especial)
-            company.obligado_contabilidad = 'SI' if self.accounting_required else 'NO'
-            company.contribuyente_especial = self.special_taxpayer_number if self.special_taxpayer else None
-            company.regimen = self.regimen
-            
-            # Guardar solo los campos modificados para evitar bucles si Company.save() también sincroniza
-            company.save(update_fields=[
-                'ambiente_sri', 'codigo_establecimiento', 'codigo_punto_emision',
-                'secuencial_factura', 'secuencial_nota_credito', 
-                'secuencial_nota_debito', 'secuencial_retencion',
-                'obligado_contabilidad', 'contribuyente_especial', 'regimen'
-            ])
-            
             # 3. Sincronizar también el ambiente en el Certificado Digital si existe
-            try:
-                if hasattr(company, 'digital_certificate'):
-                    from apps.certificates.models import DigitalCertificate
-                    DigitalCertificate.objects.filter(company=company).update(environment=self.environment)
-            except Exception as e:
-                logger.warning(f"No se pudo sincronizar ambiente con DigitalCertificate: {e}")
+            if hasattr(company, 'digital_certificate'):
+                from apps.certificates.models import DigitalCertificate
+                DigitalCertificate.objects.filter(company=company).update(environment=self.environment)
             
         except Exception as e:
             # No detener el guardado principal si la sincronización falla
@@ -1382,7 +1352,7 @@ class CreditNote(BaseModel):
         
         # Establecer fecha de emisión si no existe
         if not self.issue_date:
-            self.issue_date = timezone.now().date()
+            self.issue_date = timezone.localtime(timezone.now()).date()
         
         # ✅ LLAMADA SEGURA AL SAVE DEL PADRE
         try:
@@ -1559,7 +1529,7 @@ class DebitNote(BaseModel):
             self.access_key = self._generate_access_key()
             
         if not self.issue_date:
-            self.issue_date = timezone.now().date()
+            self.issue_date = timezone.localtime(timezone.now()).date()
             
         super().save(*args, **kwargs)
     
@@ -1674,7 +1644,7 @@ class Retention(BaseModel):
             self.access_key = self._generate_access_key()
             
         if not self.issue_date:
-            self.issue_date = timezone.now().date()
+            self.issue_date = timezone.localtime(timezone.now()).date()
             
         super().save(*args, **kwargs)
     

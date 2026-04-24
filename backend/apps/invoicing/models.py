@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Models for invoicing app
 Modelos para facturación y plantillas
@@ -180,6 +180,23 @@ class ProductTemplate(BaseModel):
         verbose_name=_('company')
     )
     
+    main_provider = models.ForeignKey(
+        'inventory.Provider',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='products',
+        verbose_name=_('main provider')
+    )
+    
+    image = models.ImageField(
+        _('image'),
+        upload_to='products/',
+        null=True,
+        blank=True,
+        help_text=_('Product image')
+    )
+    
     category = models.ForeignKey(
         ProductCategory,
         on_delete=models.SET_NULL,
@@ -217,6 +234,7 @@ class ProductTemplate(BaseModel):
     
     description = models.TextField(
         _('description'),
+        blank=True,
         help_text=_('Detailed product description')
     )
     

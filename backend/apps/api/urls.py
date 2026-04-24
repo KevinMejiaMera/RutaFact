@@ -294,6 +294,9 @@ class ProductViewSet(viewsets.ViewSet):
             return Response({'error': str(e)}, status=400)
 
 
+from apps.api.views.user_views import UserViewSet
+from apps.api.views.inventory_views import ProviderViewSet, PurchaseViewSet, StockViewSet, MovementViewSet
+
 # ========== CONFIGURACIÓN DE ROUTERS ==========
 
 # Router principal
@@ -308,6 +311,10 @@ router.register(r'vehicles', VehicleViewSet, basename='vehicle')
 router.register(r'routes', RouteViewSet, basename='route')
 router.register(r'route-stops', RouteStopViewSet, basename='route-stop')
 router.register(r'users', UserViewSet, basename='user')
+router.register(r'providers', ProviderViewSet, basename='provider')
+router.register(r'purchases', PurchaseViewSet, basename='purchase')
+router.register(r'inventory', StockViewSet, basename='inventory')
+router.register(r'movements', MovementViewSet, basename='movement')
 
 # Registrar ViewSets SRI si están disponibles
 if SRI_AVAILABLE:

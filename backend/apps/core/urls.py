@@ -77,6 +77,18 @@ urlpatterns = [
     
     path('landing/', views.public_landing_view, name='public_landing'),
     path('planes-premium/', views.premium_plans_view, name='premium_plans'),
+
+    # ==========================================
+    # 🛒 ADMINISTRACIÓN (POS, COMPRAS, INVENTARIO)
+    # ==========================================
+    path('pos/', views.admin_pos_view, name='admin_pos'),
+    path('invoices/', views.admin_invoices_view, name='admin_invoices'),
+    path('invoices/<int:pk>/retry/', views.admin_retry_invoice, name='admin_retry_invoice'),
+    path('purchases/', views.admin_purchases_view, name='admin_purchases'),
+    path('inventory/', views.admin_inventory_view, name='admin_inventory'),
+    path('inventory/product/<int:pk>/update/', views.admin_update_product, name='admin_update_product'),
+    path('customers/', views.admin_customers_view, name='admin_customers'),
+    path('config/sri/', views.admin_config_sri, name='admin_config_sri'),
 ]
 
 # ==========================================

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 {% block page_title %}Configuración de Firma Matriz{% endblock %}
 
@@ -160,13 +161,17 @@
                     <input type="number" name="secuencial_retencion" value="{{ company.secuencial_retencion }}" class="form-control">
                 </div>
                 <div class="form-group">
+                    <label>Código Establecimiento</label>
+                    <input type="text" id="id_codigo_establecimiento" name="codigo_establecimiento" value="{{ company.codigo_establecimiento }}" class="form-control" maxlength="3" placeholder="001">
+                </div>
+                <div class="form-group">
                     <label>Punto de Emisión</label>
-                    <input type="text" name="codigo_punto_emision" value="{{ company.codigo_punto_emision }}" class="form-control" maxlength="3">
+                    <input type="text" id="id_codigo_punto_emision" name="codigo_punto_emision" value="{{ company.codigo_punto_emision }}" class="form-control" maxlength="3" placeholder="001">
                 </div>
             </div>
         </div>
 
-        <button type="submit" class="btn-primary" style="padding: 20px; font-size: 18px; border-radius: 12px; box-shadow: 0 10px 20px rgba(108, 99, 255, 0.3);">
+        <button type="submit" id="btnSaveMaster" class="btn-primary" style="padding: 20px; font-size: 18px; border-radius: 12px; box-shadow: 0 10px 20px rgba(108, 99, 255, 0.3);">
             <i class="fas fa-save"></i> GUARDAR CONFIGURACIÓN MAESTRA
         </button>
     </form>
@@ -309,38 +314,65 @@
         }
     };
 
-    // --- GUARDADO MAESTRO ---
-    document.getElementById('masterConfigForm').onsubmit = async (e) => {
+    // 🏢 GUARDAR CONFIGURACIÓN MAESTRA
+    const masterForm = document.getElementById('masterConfigForm');
+    masterForm.onsubmit = async (e) => {
         e.preventDefault();
-        const btnSave = e.target.querySelector('button[type="submit"]');
-        const originalHtml = btnSave.innerHTML;
-
-        btnSave.innerHTML = '<i class="fas fa-spinner fa-spin"></i> GUARDANDO TODO...';
-        btnSave.disabled = true;
-
-        const formData = new FormData(e.target);
+        console.log("💾 Iniciando guardado de configuración...");
         
+        const btn = document.getElementById('btnSaveMaster');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+        btn.disabled = true;
+
         try {
-            const response = await fetch('/api/companies/{{ company.id }}/update_master_config/', {
+            const formData = new FormData(masterForm);
+            
+            // 🛠️ REFUERZO MANUAL (Garantiza que estos valores vayan sí o sí)
+            const est = document.getElementById('id_codigo_establecimiento').value;
+            const pto = document.getElementById('id_codigo_punto_emision').value;
+            formData.set('codigo_establecimiento', est);
+            formData.set('codigo_punto_emision', pto);
+            
+            console.log("📤 Enviando datos:", Object.fromEntries(formData));
+
+            const response = await fetch('/companies/{{ company.id }}/update_master_config/', {
                 method: 'POST',
-                body: formData,
                 headers: {
                     'X-CSRFToken': '{{ csrf_token }}'
-                }
+                },
+                body: formData
             });
 
+            const result = await response.json();
+            console.log("📥 Respuesta del servidor:", result);
+
             if (response.ok) {
-                alert("✅ Configuración Maestra guardada exitosamente. Los cambios se aplicarán a todas las facturas.");
-                window.location.reload();
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        icon: 'success',
+                        title: '¡Éxito!',
+                        text: 'Configuración actualizada correctamente',
+                        timer: 2000,
+                        showConfirmButton: false
+                    }).then(() => location.reload());
+                } else {
+                    alert("¡Éxito! Configuración actualizada correctamente");
+                    location.reload();
+                }
             } else {
-                const data = await response.json();
-                alert("❌ Error: " + (JSON.stringify(data)));
+                throw new Error(result.error || 'Error desconocido');
             }
-        } catch (err) {
-            alert("❌ Error de conexión: " + err.message);
+        } catch (error) {
+            console.error("❌ Error en guardado:", error);
+            if (typeof Swal !== 'undefined') {
+                Swal.fire('Error', error.message, 'error');
+            } else {
+                alert("Error: " + error.message);
+            }
         } finally {
-            btnSave.innerHTML = originalHtml;
-            btnSave.disabled = false;
+            btn.innerHTML = originalText;
+            btn.disabled = false;
         }
     };
 

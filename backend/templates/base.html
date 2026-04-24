@@ -27,6 +27,19 @@
             overflow: hidden;
         }
 
+        /* Mobile Overlay */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 998;
+            backdrop-filter: blur(5px);
+        }
+
         /* Sidebar */
         .sidebar {
             width: 280px;
@@ -35,6 +48,9 @@
             display: flex;
             flex-direction: column;
             padding: 30px 0;
+            transition: 0.3s;
+            z-index: 999;
+            flex-shrink: 0;
         }
 
         .logo-container {
@@ -143,11 +159,176 @@
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(108, 99, 255, 0.4);
         }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-dim);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .form-control {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 15px;
+            color: white;
+            font-size: 14px;
+            transition: 0.3s;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 4px rgba(108, 99, 255, 0.1);
+        }
+
+        select.form-control option {
+            background: #1a1a1a;
+            color: white;
+        }
+
+        /* Ocultar flechas de inputs numéricos globalmente */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        /* Responsive */
+        @media (max-width: 992px) {
+            .sidebar {
+                position: fixed;
+                left: -280px;
+                height: 100%;
+            }
+            .sidebar.active {
+                left: 0;
+            }
+            .sidebar-overlay.active {
+                display: block;
+            }
+            .main-content {
+                padding: 20px;
+            }
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 20px;
+            }
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: 1px solid var(--border);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-right: 15px;
+        }
+
+        @media (max-width: 992px) {
+            .mobile-menu-btn {
+                display: block;
+            }
+        }
+
+        .action-btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .action-btn:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 2000;
+            backdrop-filter: blur(8px);
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            max-width: 700px;
+            margin: 50px auto;
+            border-radius: 24px;
+            border: 1px solid var(--border);
+            padding: 40px;
+            position: relative;
+            animation: modalFadeIn 0.3s ease-out;
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .close-modal {
+            position: absolute;
+            right: 25px;
+            top: 25px;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 20px;
+            transition: 0.3s;
+        }
+
+        .close-modal:hover { color: white; }
+
+        /* Loader */
+        .loader {
+            width: 48px;
+            height: 48px;
+            border: 5px solid var(--border);
+            border-bottom-color: var(--primary);
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <aside class="sidebar">
+    <div class="sidebar-overlay" onclick="toggleMobileMenu()"></div>
+    <aside class="sidebar" id="sidebar">
         <div class="logo-container">
             <div class="logo-icon"><i class="fas fa-bolt"></i></div>
             <h2 style="font-size: 22px; letter-spacing: -1px;">RutaFact <span style="color: var(--primary)">.</span></h2>
@@ -158,16 +339,28 @@
                 <a href="/dashboard/" class="nav-link {% if request.path == '/dashboard/' %}active{% endif %}"><i class="fas fa-chart-pie"></i> Dashboard</a>
             </li>
             <li class="nav-item">
+                <a href="/dashboard/pos/" class="nav-link {% if request.path == '/dashboard/pos/' %}active{% endif %}" style="background: rgba(76, 175, 80, 0.05); color: #4CAF50; border: 1px solid rgba(76, 175, 80, 0.1);">
+                    <i class="fas fa-cash-register"></i> <strong>Punto de Venta (POS)</strong>
+                    <span style="background: #4CAF50; color: white; font-size: 9px; padding: 2px 6px; border-radius: 10px; margin-left: auto;">NUEVO</span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a href="/dashboard/invoices/" class="nav-link {% if request.path == '/dashboard/invoices/' %}active{% endif %}"><i class="fas fa-file-invoice"></i> Comprobantes</a>
             </li>
             <li class="nav-item">
                 <a href="/dashboard/users/" class="nav-link {% if request.path == '/dashboard/users/' %}active{% endif %}"><i class="fas fa-users"></i> Usuarios / Roles</a>
             </li>
             <li class="nav-item">
-                <a href="/dashboard/config/" class="nav-link {% if request.path == '/dashboard/config/' %}active{% endif %}"><i class="fas fa-cog"></i> Configuración SRI</a>
+                <a href="/dashboard/suppliers/" class="nav-link {% if '/suppliers/' in request.path %}active{% endif %}"><i class="fas fa-truck"></i> Proveedores</a>
             </li>
             <li class="nav-item">
-                <a href="/dashboard/tracking/" class="nav-link {% if '/tracking/' in request.path %}active{% endif %}"><i class="fas fa-route"></i> Recorrido (GPS)</a>
+                <a href="/dashboard/purchases/" class="nav-link {% if '/purchases/' in request.path %}active{% endif %}"><i class="fas fa-shopping-cart"></i> Compras (Inventario)</a>
+            </li>
+            <li class="nav-item">
+                <a href="/dashboard/inventory/" class="nav-link {% if '/inventory/' in request.path %}active{% endif %}"><i class="fas fa-boxes"></i> Stock / Inventario</a>
+            </li>
+            <li class="nav-item">
+                <a href="/dashboard/config/" class="nav-link {% if '/config/' in request.path %}active{% endif %}"><i class="fas fa-cog"></i> Configuración SRI</a>
             </li>
         </ul>
 
@@ -178,9 +371,14 @@
 
     <main class="main-content">
         <header class="header">
-            <div>
-                <h1 class="gradient-text">{% block page_title %}Bienvenido{% endblock %}</h1>
-                <p style="color: var(--text-dim); margin-top: 5px;">Panel Matriz de Administración</p>
+            <div style="display: flex; align-items: center;">
+                <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div>
+                    <h1 class="gradient-text">{% block page_title %}Bienvenido{% endblock %}</h1>
+                    <p style="color: var(--text-dim); margin-top: 5px;">Panel Matriz de Administración</p>
+                </div>
             </div>
             <div class="user-profile">
                 <span style="font-weight: 600;">{{ user.email }}</span>
@@ -192,8 +390,52 @@
 
         {% block content %}{% endblock %}
     </main>
+    <!-- Generic Detail Modal -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <i class="fas fa-times close-modal" onclick="closeDetailModal()"></i>
+            <div id="modalBody">
+                <div style="text-align: center; padding: 40px;">
+                    <span class="loader"></span>
+                    <p style="margin-top: 20px; color: var(--text-dim);">Cargando detalles...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- WebSocket Real-time Updates -->
     <script>
+        function toggleMobileMenu() {
+            document.getElementById('sidebar').classList.toggle('active');
+            document.querySelector('.sidebar-overlay').classList.toggle('active');
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detailModal').style.display = 'none';
+        }
+
+        async function fetchDetails(url) {
+            document.getElementById('detailModal').style.display = 'block';
+            document.getElementById('modalBody').innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <span class="loader"></span>
+                    <p style="margin-top: 20px; color: var(--text-dim);">Cargando detalles...</p>
+                </div>`;
+            
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Error al cargar datos');
+                return await response.json();
+            } catch (err) {
+                document.getElementById('modalBody').innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #ff5c5c;">
+                        <i class="fas fa-exclamation-circle fa-3x"></i>
+                        <p style="margin-top: 20px;">${err.message}</p>
+                    </div>`;
+                return null;
+            }
+        }
+
         const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/user/';
         const socket = new WebSocket(wsUrl);
 

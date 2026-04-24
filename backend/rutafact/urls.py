@@ -43,8 +43,20 @@ urlpatterns = [
     path('', lambda r: redirect('admin_dashboard'), name='home'),
     path('dashboard/', core_views.admin_dashboard, name='admin_dashboard'),
     path('dashboard/config/', core_views.admin_config_sri, name='admin_config_sri'),
+    path('dashboard/pos/', core_views.admin_pos_view, name='admin_pos'),
+    path('dashboard/customers/add_ajax/', core_views.admin_add_customer_ajax, name='admin_add_customer_ajax'),
     path('dashboard/invoices/', core_views.admin_invoices_view, name='admin_invoices'),
+    path('dashboard/invoices/<int:pk>/retry/', core_views.admin_retry_invoice, name='admin_retry_invoice'),
+    path('dashboard/suppliers/', core_views.admin_providers_view, name='admin_suppliers'),
+    path('dashboard/suppliers/<int:provider_id>/edit/', core_views.admin_edit_provider, name='admin_edit_provider'),
+    path('dashboard/suppliers/<int:provider_id>/delete/', core_views.admin_delete_provider, name='admin_delete_provider'),
+    path('dashboard/purchases/', core_views.admin_purchases_view, name='admin_purchases'),
+    path('dashboard/purchases/<int:purchase_id>/delete/', core_views.admin_delete_purchase, name='admin_delete_purchase'),
+    path('dashboard/inventory/', core_views.admin_inventory_view, name='admin_inventory'),
+    path('dashboard/inventory/<int:stock_id>/adjust/', core_views.admin_adjust_stock, name='admin_adjust_stock'),
+    path('dashboard/inventory/product/<int:product_id>/edit/', core_views.admin_edit_product, name='admin_edit_product'),
     path('dashboard/users/', core_views.admin_users_view, name='admin_users'),
+    path('dashboard/users/<int:user_id>/delete/', core_views.admin_delete_user, name='admin_delete_user'),
     path('dashboard/users/<int:user_id>/toggle/', core_views.toggle_user_assignment, name='toggle_user_assignment'),
     path('dashboard/users/<int:user_id>/update_role/', core_views.update_user_role, name='update_user_role'),
     path('dashboard/users/<int:user_id>/update_status/', core_views.update_user_status, name='update_user_status'),
@@ -65,6 +77,9 @@ urlpatterns = [
     path('certificates/', include('apps.certificates.urls')),
     path('notifications/', include('apps.notifications.urls')),
     path('sri/', include('apps.sri_integration.urls')),
+    
+    # 📱 PWA / Service Worker (Dummy path to avoid 404 noise)
+    path('serviceworker.js', lambda r: HttpResponse("// dummy sw", content_type="application/javascript"), name='serviceworker'),
 ]
 
 # ==========================================

@@ -28,23 +28,28 @@
 <h2 style="margin-bottom: 25px;">Empresa Matriz</h2>
 <div class="grid-container" style="display: grid; grid-template-columns: 1fr; gap: 20px;">
     {% for company in companies %}
-    <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 30px;">
-        <div>
-            <h4 style="font-size: 24px; margin-bottom: 5px;">{{ company.business_name }}</h4>
-            <p style="color: var(--primary); font-weight: 700; font-size: 18px; margin-bottom: 10px;">RUC: {{ company.ruc }}</p>
-            <div style="display: flex; gap: 20px; color: var(--text-dim); font-size: 14px;">
-                <span><i class="fas fa-map-marker-alt"></i> {{ company.ciudad|default:"Ubicación no configurada" }}</span>
-                <span><i class="fas fa-phone"></i> {{ company.phone|default:"Sin teléfono" }}</span>
+    <div class="card" style="display: flex; flex-direction: column; gap: 20px; padding: 30px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 20px;">
+            <div>
+                <h4 style="font-size: 24px; margin-bottom: 5px;">{{ company.business_name }}</h4>
+                <p style="color: var(--primary); font-weight: 700; font-size: 18px; margin-bottom: 10px;">RUC: {{ company.ruc }}</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 20px; color: var(--text-dim); font-size: 14px;">
+                    <span><i class="fas fa-map-marker-alt"></i> {{ company.ciudad|default:"Ubicación no configurada" }}</span>
+                    <span><i class="fas fa-phone"></i> {{ company.phone|default:"Sin teléfono" }}</span>
+                </div>
             </div>
-        </div>
-        
-        <div style="display: flex; flex-direction: column; gap: 10px; min-width: 200px;">
-            <a href="/dashboard/config/" class="btn-primary" style="padding: 12px 20px; text-align: center; text-decoration: none;">
-                <i class="fas fa-cog"></i> CONFIGURAR SRI
-            </a>
-            <a href="/dashboard/invoices/" class="btn-primary" style="background: transparent; border: 1px solid var(--border); padding: 12px 20px; text-align: center; text-decoration: none; color: white;">
-                <i class="fas fa-list"></i> HISTORIAL FACTURAS
-            </a>
+            
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <a href="/dashboard/invoices/" class="btn-primary" style="padding: 12px 20px; text-align: center; text-decoration: none;">
+                    <i class="fas fa-file-invoice"></i> COMPROBANTES
+                </a>
+                <a href="/dashboard/inventory/" class="btn-primary" style="background: transparent; border: 1px solid var(--border); padding: 12px 20px; text-align: center; text-decoration: none; color: white;">
+                    <i class="fas fa-boxes"></i> VER STOCK
+                </a>
+                <button class="action-btn" title="Editar Empresa" onclick="alert('Editar empresa en desarrollo')">
+                    <i class="fas fa-edit"></i>
+                </button>
+            </div>
         </div>
     </div>
     {% empty %}

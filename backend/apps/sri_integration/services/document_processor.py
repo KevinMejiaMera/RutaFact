@@ -97,12 +97,18 @@ class DocumentProcessor:
                 # B. GENERAR XML
                 ok_gen, xml_content = self._generate_xml(document)
                 if not ok_gen:
+                    document.status = 'ERROR'
+                    document.sri_response = {'mensaje': f"Error en generación XML: {xml_content}"}
+                    document.save(update_fields=['status', 'sri_response'])
                     send_queue_update(self.company.id, document.id, 'ERROR', f"Error en generación XML: {xml_content}")
                     return False, f"XML generation failed: {xml_content}"
                 
                 # C. FIRMAR XML
                 ok_sign, signed_xml = self._sign_xml(document, xml_content, cert_data)
                 if not ok_sign:
+                    document.status = 'ERROR'
+                    document.sri_response = {'mensaje': f"Error en firma digital: {signed_xml}"}
+                    document.save(update_fields=['status', 'sri_response'])
                     send_queue_update(self.company.id, document.id, 'ERROR', f"Error en firma digital: {signed_xml}")
                     return False, f"XML signing failed: {signed_xml}"
                 
@@ -158,6 +164,9 @@ class DocumentProcessor:
                     time.sleep(3)
 
             if not ok:
+                document.status = 'ERROR'
+                document.sri_response = {'mensaje': f"Error final SRI: {sri_msg}"}
+                document.save(update_fields=['status', 'sri_response'])
                 send_queue_update(self.company.id, document.id, 'ERROR', f"Error final en envío al SRI: {sri_msg}")
                 return False, sri_msg
 
@@ -207,6 +216,7 @@ class DocumentProcessor:
         except Exception as e:
             logger.exception("Critical error processing document %s", document.id)
             document.status = "ERROR"
+            document.sri_response = {'mensaje': f"Error crítico: {str(e)}"}
             document.save()
             send_queue_update(self.company.id, document.id, 'ERROR', f"Error crítico: {str(e)}")
             return False, f"PROCESSOR_CRITICAL_ERROR: {e}"

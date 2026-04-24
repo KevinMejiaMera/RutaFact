@@ -146,7 +146,7 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                         return Response(data, status=status.HTTP_200_OK)
                     
                     # Si existe pero no está autorizado, actualizamos datos básicos y lo procesamos
-                    document.issue_date = validated_data.get("issue_date", timezone.now().date())
+                    document.issue_date = validated_data.get("issue_date", timezone.localtime(timezone.now()).date())
                     document.customer_identification_type = validated_data["customer_identification_type"]
                     document.customer_identification = validated_data["customer_identification"]
                     document.customer_name = validated_data["customer_name"]
@@ -164,7 +164,7 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                         company=company,
                         document_type="INVOICE",
                         document_number=document_number,
-                        issue_date=validated_data.get("issue_date", timezone.now().date()),
+                        issue_date=validated_data.get("issue_date", timezone.localtime(timezone.now()).date()),
                         customer_identification_type=validated_data["customer_identification_type"],
                         customer_identification=validated_data["customer_identification"],
                         customer_name=validated_data["customer_name"],
@@ -483,7 +483,7 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                 customer_email=data.get("customer_email", ""),
                 subtotal_without_tax=Decimal(str(data.get("subtotal_without_tax", "0.00"))),
                 total_amount=Decimal(str(data.get("total_amount", "0.00"))),
-                issue_date=timezone.now().date(),
+                issue_date=timezone.localtime(timezone.now()).date(),
                 status="DRAFT"
             )
             

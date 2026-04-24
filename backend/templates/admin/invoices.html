@@ -1,174 +1,304 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
+{% load static %}
 
-{% block page_title %}Listado de Comprobantes{% endblock %}
+{% block title %}Facturación Electrónica - RutaFact{% endblock %}
 
 {% block extra_css %}
 <style>
-    .invoices-container {
-        animation: fadeIn 0.5s ease-out;
-    }
-    
-    .status-authorized { background: rgba(76, 175, 80, 0.1); color: #4CAF50; }
-    .status-rejected { background: rgba(244, 67, 54, 0.1); color: #f44336; }
-    .status-sent { background: rgba(33, 150, 243, 0.1); color: #2196F3; }
-    .status-draft { background: rgba(158, 158, 158, 0.1); color: #9E9E9E; }
-
-    .invoice-table-card {
-        background: var(--bg-card);
-        border-radius: 24px;
+    .monitor-card {
+        background: rgba(255, 255, 255, 0.03);
         border: 1px solid var(--border);
-        overflow: hidden;
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 30px;
     }
-
-    .table-header {
-        padding: 25px;
-        border-bottom: 1px solid var(--border);
-        display: flex;
-        justify-content: space-between;
+    .status-pill {
+        display: inline-flex;
         align-items: center;
-    }
-
-    table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-
-    th {
-        text-align: left;
-        padding: 15px 25px;
-        color: var(--text-dim);
-        font-size: 13px;
+        gap: 6px;
+        padding: 4px 12px;
+        border-radius: 50px;
+        font-size: 11px;
+        font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        background: rgba(255,255,255,0.02);
     }
-
-    td {
-        padding: 20px 25px;
-        border-bottom: 1px solid var(--border);
-        font-size: 14px;
-    }
-
-    .vendedor-badge {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--text-main);
-        font-weight: 500;
-    }
-
-    .vendedor-avatar {
-        width: 25px;
-        height: 25px;
-        background: var(--primary);
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 10px;
-        font-weight: bold;
-    }
-
-    .btn-download {
-        color: var(--text-dim);
-        text-decoration: none;
-        padding: 5px;
-        transition: 0.3s;
-    }
-
-    .btn-download:hover {
-        color: var(--primary);
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
+    .status-authorized { background: rgba(0, 200, 83, 0.1); color: #00c853; border: 1px solid rgba(0, 200, 83, 0.2); }
+    .status-sent { background: rgba(108, 99, 255, 0.1); color: var(--primary); border: 1px solid rgba(108, 99, 255, 0.2); }
+    .status-error { background: rgba(255, 82, 82, 0.1); color: #ff5252; border: 1px solid rgba(255, 82, 82, 0.2); }
+    .status-draft { background: rgba(255, 255, 255, 0.05); color: var(--text-dim); border: 1px solid var(--border); }
+    
+    .invoice-table { width: 100%; border-collapse: collapse; }
+    .invoice-table th { text-align: left; padding: 15px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 12px; text-transform: uppercase; }
+    .invoice-table td { padding: 15px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 14px; }
+    .invoice-table tr:hover { background: rgba(255,255,255,0.02); }
+    
+    .pulse { animation: pulse-animation 2s infinite; }
+    @keyframes pulse-animation {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="invoices-container">
-    <div class="invoice-table-card">
-        <div class="table-header">
-            <div>
-                <h3 style="font-size: 18px; color: white;">Todos los Comprobantes</h3>
-                <p style="color: var(--text-dim); font-size: 14px; margin-top: 5px;">Historial completo de documentos emitidos por la matriz</p>
-            </div>
-            <div style="display: flex; gap: 10px;">
-                <button class="btn-primary" style="background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: white;" onclick="window.location.reload()">
-                    <i class="fas fa-sync-alt"></i> Actualizar
-                </button>
-            </div>
+<div class="dashboard-container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <div>
+            <h1 style="font-size: 28px; color: white; margin-bottom: 5px;">Facturación Electrónica</h1>
+            <p style="color: var(--text-dim);">Administra y monitorea tus comprobantes emitidos al SRI.</p>
         </div>
+        <div style="display: flex; gap: 15px;">
+            <button class="btn-primary" onclick="window.location.reload()"><i class="fas fa-sync-alt"></i> Actualizar</button>
+        </div>
+    </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Fecha / Número</th>
-                    <th>Cliente</th>
-                    <th>Total</th>
-                    <th>Emitido por (Vendedor)</th>
-                    <th>Estado SRI</th>
-                    <th style="text-align: right;">Opciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for invoice in invoices %}
-                <tr>
-                    <td>
-                        <div style="font-weight: 600; color: white;">{{ invoice.document_number }}</div>
-                        <div style="font-size: 12px; color: var(--text-dim);">{{ invoice.issue_date|date:"d M, Y" }}</div>
-                    </td>
-                    <td>
-                        <div style="font-weight: 500; color: white;">{{ invoice.customer_name }}</div>
-                        <div style="font-size: 12px; color: var(--text-dim);">{{ invoice.customer_identification }}</div>
-                    </td>
-                    <td>
-                        <div style="font-weight: 700; color: var(--primary);">${{ invoice.total_amount }}</div>
-                    </td>
-                    <td>
-                        <div class="vendedor-badge">
-                            <div class="vendedor-avatar">
-                                {{ invoice.created_by.first_name|slice:":1"|default:invoice.created_by.email|slice:":1"|upper }}
-                            </div>
-                            <div>
-                                <div style="font-size: 13px;">{{ invoice.created_by.get_full_name|default:invoice.created_by.email }}</div>
-                                <div style="font-size: 11px; color: var(--text-dim);">Vendedor Autorizado</div>
-                            </div>
-                        </div>
-                    </td>
-                    <td>
-                        <span class="badge {% if invoice.status == 'AUTHORIZED' %}status-authorized{% elif invoice.status == 'REJECTED' %}status-rejected{% elif invoice.status == 'SENT' %}status-sent{% else %}status-draft{% endif %}">
-                            {{ invoice.get_status_display }}
-                        </span>
-                    </td>
-                    <td style="text-align: right;">
-                        <div style="display: flex; justify-content: flex-end; gap: 15px;">
-                            {% if invoice.pdf_file %}
-                            <a href="{{ invoice.pdf_file.url }}" class="btn-download" title="Descargar PDF" target="_blank">
-                                <i class="fas fa-file-pdf"></i>
-                            </a>
+    <!-- Monitor de Procesamiento (Solo aparece si hay pendientes o errores) -->
+    {% if pending_invoices %}
+    <div class="monitor-card">
+        <h3 style="color: white; font-size: 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+            <i class="fas fa-microchip" style="color: var(--primary);"></i> Monitor de Cola de Procesamiento (SRI)
+        </h3>
+        <div class="table-container">
+            <table class="invoice-table">
+                <thead>
+                    <tr>
+                        <th>Comprobante</th>
+                        <th>Cliente</th>
+                        <th>Estado Actual</th>
+                        <th>Mensaje / Error</th>
+                        <th style="text-align: right;">Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for invoice in pending_invoices %}
+                    <tr>
+                        <td>
+                            <div style="color: white; font-weight: 600;">{{ invoice.document_number }}</div>
+                            <div style="font-size: 11px; color: var(--text-dim);">{{ invoice.get_document_type_display }}</div>
+                        </td>
+                        <td>{{ invoice.customer_name }}</td>
+                        <td>
+                            {% if invoice.status == 'SENT' %}
+                                <span class="status-pill status-sent pulse"><i class="fas fa-spinner fa-spin"></i> En SRI</span>
+                            {% elif invoice.status == 'ERROR' or invoice.status == 'REJECTED' %}
+                                <span class="status-pill status-error"><i class="fas fa-exclamation-triangle"></i> Falló</span>
+                            {% else %}
+                                <span class="status-pill status-draft"><i class="fas fa-clock"></i> Pendiente</span>
                             {% endif %}
-                            {% if invoice.xml_file %}
-                            <a href="{{ invoice.xml_file.url }}" class="btn-download" title="Descargar XML" target="_blank">
-                                <i class="fas fa-file-code"></i>
-                            </a>
+                        </td>
+                        <td style="max-width: 300px; font-size: 12px;">
+                            {% if invoice.sri_response and invoice.sri_response.mensaje %}
+                                <span style="color: #ff8a80; font-weight: 500;">
+                                    <i class="fas fa-info-circle"></i> {{ invoice.sri_response.mensaje }}
+                                </span>
+                            {% elif invoice.status == 'DRAFT' or invoice.status == 'GENERATED' %}
+                                <span style="color: var(--primary);"><i class="fas fa-cog fa-spin"></i> Preparando envío automático...</span>
+                            {% elif invoice.status == 'SENT' %}
+                                <span style="color: #81c784;"><i class="fas fa-paper-plane"></i> Enviado al SRI, esperando respuesta...</span>
+                            {% else %}
+                                <span style="color: var(--text-dim);">Sin respuesta del servidor aún</span>
                             {% endif %}
-                        </div>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="6" style="text-align: center; padding: 80px;">
-                        <i class="fas fa-file-invoice fa-4x" style="margin-bottom: 20px; opacity: 0.1;"></i>
-                        <h4 style="color: var(--text-dim);">No hay comprobantes emitidos</h4>
-                        <p style="color: var(--text-dim); font-size: 14px; margin-top: 10px;">Las facturas que emitas desde la App aparecerán aquí automáticamente.</p>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                        </td>
+                        <td style="text-align: right;">
+                            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                <a href="{% url 'admin_retry_invoice' invoice.id %}" class="action-btn" title="Reintentar Envío" style="color: var(--primary);">
+                                    <i class="fas fa-redo-alt"></i>
+                                </a>
+                                <button class="action-btn" onclick="showInvoiceDetails({{ invoice.id }})"><i class="fas fa-eye"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Listado Principal (Autorizados) -->
+    <div class="card">
+        <h3 style="color: white; font-size: 18px; margin-bottom: 20px;">Historial de Comprobantes Autorizados</h3>
+        <div class="table-container">
+            <table class="invoice-table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Número</th>
+                        <th>Cliente</th>
+                        <th>Total</th>
+                        <th>Estado</th>
+                        <th style="text-align: right;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for invoice in authorized_invoices %}
+                    <tr>
+                        <td>{{ invoice.issue_date|date:"d/m/Y" }}</td>
+                        <td>
+                            <div style="color: white; font-weight: 600;">{{ invoice.document_number }}</div>
+                            <div style="font-size: 11px; color: var(--text-dim);">{{ invoice.get_document_type_display }}</div>
+                        </td>
+                        <td>
+                            <div style="color: white;">{{ invoice.customer_name }}</div>
+                            <div style="font-size: 11px; color: var(--text-dim);">{{ invoice.customer_identification }}</div>
+                        </td>
+                        <td style="color: white; font-weight: 600;">${{ invoice.total_amount|floatformat:2 }}</td>
+                        <td>
+                            <span class="status-pill status-authorized"><i class="fas fa-check-circle"></i> Autorizado</span>
+                        </td>
+                        <td style="text-align: right;">
+                            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                <button class="action-btn" onclick="showInvoiceDetails({{ invoice.id }})" title="Ver Detalles"><i class="fas fa-eye"></i></button>
+                                {% if invoice.pdf_file %}
+                                <a href="{{ invoice.pdf_file.url }}" class="action-btn" title="Descargar PDF" target="_blank">
+                                    <i class="fas fa-file-pdf" style="color: #ff5252;"></i>
+                                </a>
+                                {% endif %}
+                                {% if invoice.signed_xml_file %}
+                                <a href="{{ invoice.signed_xml_file.url }}" class="action-btn" title="Descargar XML" target="_blank">
+                                    <i class="fas fa-file-code" style="color: var(--primary);"></i>
+                                </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 60px; color: var(--text-dim);">
+                            {% if not pending_invoices %}
+                                <i class="fas fa-file-invoice fa-4x" style="margin-bottom: 20px; opacity: 0.1;"></i>
+                                <p>No hay comprobantes autorizados aún.</p>
+                            {% else %}
+                                <p>Revisa el monitor de arriba para ver los comprobantes en proceso.</p>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
+
+<!-- Modal de Detalles (Reutilizando el de base.html si existe o definiendo uno aquí) -->
+<div id="invoiceDetailModal" class="modal">
+    <div class="modal-content" style="max-width: 800px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="color: white;">Detalle del Comprobante</h3>
+            <i class="fas fa-times" style="cursor: pointer; color: var(--text-dim);" onclick="closeModal()"></i>
+        </div>
+        <div id="modalBody">
+            <!-- Cargado vía AJAX -->
+        </div>
+    </div>
+</div>
+
+<script>
+    async function showInvoiceDetails(id) {
+        const modal = document.getElementById('invoiceDetailModal');
+        const body = document.getElementById('modalBody');
+        body.innerHTML = '<div style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin fa-2x" style="color: var(--primary);"></i><p style="margin-top: 15px; color: var(--text-dim);">Cargando detalles...</p></div>';
+        modal.style.display = 'block';
+
+        try {
+            const response = await fetch(`/api/sri/documents/${id}/`);
+            const data = await response.json();
+            
+            const itemsHtml = (data.items || []).map(item => `
+                <tr>
+                    <td style="padding: 12px; border-bottom: 1px solid var(--border);">
+                        <div style="color: white; font-weight: 500;">${item.description}</div>
+                        <div style="font-size: 11px; color: var(--text-dim);">Cod: ${item.main_code}</div>
+                    </td>
+                    <td style="padding: 12px; border-bottom: 1px solid var(--border); text-align: center;">${parseFloat(item.quantity).toFixed(2)}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid var(--border); text-align: right;">$${parseFloat(item.unit_price).toFixed(2)}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid var(--border); text-align: right; color: var(--primary); font-weight: 600;">$${parseFloat(item.total_price).toFixed(2)}</td>
+                </tr>
+            `).join('');
+
+            body.innerHTML = `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 25px;">
+                    <div>
+                        <div style="font-size: 12px; color: var(--text-dim); text-transform: uppercase;">Estado SRI</div>
+                        <div style="margin-top: 5px;">
+                            <span class="status-pill ${data.status === 'AUTHORIZED' ? 'status-authorized' : 'status-sent'}">${data.status_display || data.status}</span>
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 12px; color: var(--text-dim); text-transform: uppercase;">Número</div>
+                        <div style="color: white; font-weight: 700; font-size: 18px; margin-top: 5px;">${data.document_number}</div>
+                    </div>
+                </div>
+
+                <div style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 15px; margin-bottom: 25px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div>
+                            <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 5px;">CLIENTE</div>
+                            <div style="color: white; font-weight: 600;">${data.customer_name}</div>
+                            <div style="font-size: 13px; color: var(--text-dim);">${data.customer_identification}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 5px;">FECHA</div>
+                            <div style="color: white;">${new Date(data.issue_date).toLocaleDateString()}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <th style="text-align: left; padding: 10px; color: var(--text-dim); font-size: 12px;">Descripción</th>
+                            <th style="text-align: center; padding: 10px; color: var(--text-dim); font-size: 12px;">Cant.</th>
+                            <th style="text-align: right; padding: 10px; color: var(--text-dim); font-size: 12px;">Unit.</th>
+                            <th style="text-align: right; padding: 10px; color: var(--text-dim); font-size: 12px;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsHtml}
+                    </tbody>
+                </table>
+
+                <div style="display: flex; justify-content: flex-end;">
+                    <div style="width: 200px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span style="color: var(--text-dim);">Subtotal:</span>
+                            <span style="color: white;">$${parseFloat(data.total_without_tax).toFixed(2)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span style="color: var(--text-dim);">IVA:</span>
+                            <span style="color: white;">$${parseFloat(data.total_tax).toFixed(2)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 10px; font-weight: 700; font-size: 18px; color: var(--primary);">
+                            <span>TOTAL:</span>
+                            <span>$${parseFloat(data.total_amount).toFixed(2)}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                ${data.sri_response && data.sri_response.mensaje ? `
+                <div style="margin-top: 20px; padding: 15px; background: rgba(255,82,82,0.1); border-radius: 10px; border: 1px solid rgba(255,82,82,0.2);">
+                    <div style="color: #ff5252; font-size: 12px; font-weight: 700; margin-bottom: 5px;">RESPUESTA SRI:</div>
+                    <div style="color: white; font-size: 13px;">${data.sri_response.mensaje}</div>
+                    ${data.sri_response.informacionAdicional ? `<div style="color: var(--text-dim); font-size: 11px; margin-top: 5px;">${data.sri_response.informacionAdicional}</div>` : ''}
+                </div>
+                ` : ''}
+            `;
+        } catch (error) {
+            body.innerHTML = '<div style="text-align: center; padding: 40px; color: #ff5252;"><i class="fas fa-exclamation-circle fa-2x"></i><p style="margin-top: 15px;">Error al cargar detalles.</p></div>';
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('invoiceDetailModal').style.display = 'none';
+    }
+
+    // Cerrar modal al hacer click fuera
+    window.onclick = function(event) {
+        const modal = document.getElementById('invoiceDetailModal');
+        if (event.target == modal) {
+            closeModal();
+        }
+    }
+</script>
 {% endblock %}
