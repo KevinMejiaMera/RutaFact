@@ -57,7 +57,14 @@ class CompanyViewSet(viewsets.ModelViewSet):
         for field in ALLOWED_FIELDS:
             val = request.data.get(field, None)
             if val is not None and str(val).strip() != '':
-                update_fields[field] = str(val).strip()
+                # Convertir a int si es secuencial
+                if 'secuencial' in field or field in ['establecimiento', 'punto_emision']:
+                    try:
+                        update_fields[field] = str(val).strip()
+                    except:
+                        pass
+                else:
+                    update_fields[field] = str(val).strip()
 
         # Logo (archivo)
         if 'logo' in request.FILES:
@@ -66,40 +73,39 @@ class CompanyViewSet(viewsets.ModelViewSet):
             company.logo.save(logo_file.name, logo_file, save=False)
             update_fields['logo'] = company.logo.name
 
-        codigo_establecimiento = update_fields.get('codigo_establecimiento', '')
-        codigo_punto_emision = update_fields.get('codigo_punto_emision', '')
-
-        print(f"[POST CONFIG] establecimiento='{codigo_establecimiento}', punto='{codigo_punto_emision}'")
-        logger.warning(f"[POST CONFIG] establecimiento='{codigo_establecimiento}', punto='{codigo_punto_emision}'")
-        print(f"[POST CONFIG] update_fields={update_fields}")
-        logger.warning(f"[POST CONFIG] update_fields={update_fields}")
-
         if not update_fields:
             return Response({'status': 'ok', 'message': 'Nada que actualizar'})
 
-        # UPDATE directo - nunca llama a model.save()
+        # UPDATE directo en Company
         Company.objects.filter(pk=company.pk).update(**update_fields)
-
-        # Sincronizar SRIConfiguration
-        from apps.sri_integration.models import SRIConfiguration
-        sri_update = {}
-        if codigo_establecimiento:
-            sri_update['establishment_code'] = codigo_establecimiento
-        if codigo_punto_emision:
-            sri_update['emission_point'] = codigo_punto_emision
-        amb = update_fields.get('ambiente_sri')
-        if amb:
-            sri_update['environment'] = 'TEST' if amb == '1' else 'PRODUCTION'
-        if sri_update:
-            SRIConfiguration.objects.filter(company=company).update(**sri_update)
-
         company.refresh_from_db()
-        print(f"[POST CONFIG] GUARDADO OK: establecimiento='{company.codigo_establecimiento}' punto='{company.codigo_punto_emision}'")
-        logger.warning(f"[POST CONFIG] GUARDADO OK: establecimiento='{company.codigo_establecimiento}', punto='{company.codigo_punto_emision}'")
+
+        # ✅ SINCRONIZACIÓN EXHAUSTIVA CON SRIConfiguration
+        from apps.sri_integration.models import SRIConfiguration
+        sri_defaults = {
+            'environment': 'TEST' if company.ambiente_sri == '1' else 'PRODUCTION',
+            'establishment_code': company.codigo_establecimiento,
+            'emission_point': company.codigo_punto_emision,
+            'invoice_sequence': company.secuencial_factura,
+            'credit_note_sequence': company.secuencial_nota_credito,
+            'debit_note_sequence': company.secuencial_nota_debito,
+            'retention_sequence': company.secuencial_retencion,
+            'accounting_required': (company.obligado_contabilidad == 'SI'),
+            'special_taxpayer': bool(company.contribuyente_especial),
+            'special_taxpayer_number': company.contribuyente_especial or '',
+            'regimen': company.regimen
+        }
+        
+        SRIConfiguration.objects.update_or_create(
+            company=company,
+            defaults=sri_defaults
+        )
+
+        logger.info(f"✅ [POST CONFIG] Guardado y Sincronizado OK para {company.ruc}")
 
         return Response({
             'status': 'success',
-            'message': 'Configuracion maestra actualizada correctamente',
+            'message': 'Configuración maestra actualizada y sincronizada correctamente',
             'data': CompanySerializer(company).data
         })
 
@@ -116,17 +122,33 @@ class CompanyViewSet(viewsets.ModelViewSet):
         if not active_cert:
             return Response({'error': 'No hay una firma activa para sincronizar'}, status=400)
             
-        company.ruc = active_cert.extracted_ruc
+        # 1. Intentar refrescar la extracción (por si hay nuevos OIDs soportados)
+        password = active_cert.get_password()
+        if password:
+            active_cert.extract_real_certificate_info(password)
+            # extract_real_certificate_info ya actualiza ruc y business_name en la db
+            # pero necesitamos recargar el objeto company para tener los datos frescos
+            company.refresh_from_db()
+
+        # 2. Sincronizar campos adicionales si no se actualizaron
+        if active_cert.extracted_ruc:
+            company.ruc = active_cert.extracted_ruc
+        
         if active_cert.extracted_name:
             company.business_name = active_cert.extracted_name
             if not company.trade_name:
                 company.trade_name = active_cert.extracted_name
         
+        # 3. Sincronizar ambiente también
+        if active_cert.environment:
+            company.ambiente_sri = '1' if active_cert.environment == 'TEST' else '2'
+            
         company.save()
         
         return Response({
             'status': 'success',
-            'message': f'Sincronizado con RUC: {company.ruc}',
+            'message': f'Datos sincronizados exitosamente con la firma de: {company.business_name}',
             'ruc': company.ruc,
-            'business_name': company.business_name
+            'business_name': company.business_name,
+            'environment': company.get_ambiente_sri_display()
         })

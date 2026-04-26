@@ -101,7 +101,7 @@ MIDDLEWARE = [
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'apps.billing.middleware.BillingLimitMiddleware',
+    # 'apps.billing.middleware.BillingLimitMiddleware',  # DESACTIVADO: sistema sin planes de facturación
     'apps.users.views.SimpleSessionTimeoutMiddleware',
     'apps.users.views.CheckUserAccessMiddleware',
     'apps.api.permissions.CompanySecurityMiddleware',

@@ -465,6 +465,14 @@ class DocumentProcessor:
                     self.company.id, document.access_key,
                     balance_before, profile.available_invoices,
                 )
+                
+                # ✅ SI ES UNA NOTA DE CRÉDITO, REEMBOLSAR LA FACTURA ORIGINAL
+                if document.document_type == 'CREDIT_NOTE' and hasattr(document, 'original_document'):
+                    if profile.refund_invoice():
+                        logger.info(
+                            "🔄 BILLING: Crédito devuelto por Nota de Crédito — empresa=%s original=%s saldo=%s",
+                            self.company.id, document.original_document.document_number, profile.available_invoices
+                        )
             else:
                 logger.warning(
                     "⚠️ BILLING: sin facturas disponibles — empresa=%s saldo=%s",

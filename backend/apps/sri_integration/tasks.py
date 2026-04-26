@@ -16,7 +16,7 @@ from django.utils import timezone
 from django.core.cache import cache
 from datetime import timedelta
 from django.db import transaction
-from .models import ElectronicDocument, SRIResponse
+from .models import ElectronicDocument, CreditNote, SRIResponse
 from .services.soap_client import SRISOAPClient
 from .services.document_processor import DocumentProcessor
 from apps.core.websockets_utils import send_queue_update
@@ -110,13 +110,18 @@ def check_document_authorization_async(self, document_id):
             return False
 
 @shared_task(bind=True, max_retries=5)
-def process_document_async(self, document_id):
+def process_document_async(self, document_id, model_type='ElectronicDocument'):
     """
     ✅ TAREA: Procesar documento completo en background (Cola aislada por empresa)
+    model_type puede ser 'ElectronicDocument' o 'CreditNote'
     """
     lock_id = None
     try:
-        document = ElectronicDocument.objects.get(id=document_id)
+        if model_type == 'CreditNote':
+            document = CreditNote.objects.get(id=document_id)
+        else:
+            document = ElectronicDocument.objects.get(id=document_id)
+            
         company_id = document.company.id
         
         # Lock por empresa (Carril dinámico para FIRMA/ENVIO)

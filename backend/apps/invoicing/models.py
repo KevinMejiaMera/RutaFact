@@ -258,7 +258,7 @@ class ProductTemplate(BaseModel):
         _('tax rate'),
         max_digits=5,
         decimal_places=2,
-        default=12.00,
+        default=15.00,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text=_('Default tax rate percentage')
     )

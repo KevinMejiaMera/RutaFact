@@ -1329,8 +1329,39 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
                     subtotal=subtotal
                 )
                 
-                # Calcular impuesto (IVA 15%)
-                tax_amount = fix_decimal(subtotal * Decimal('15.00') / 100, 2)
+                # Buscar el producto para obtener su IVA configurado
+                from apps.invoicing.models import ProductTemplate
+                product = ProductTemplate.objects.filter(company=company, main_code=item_data['main_code']).first()
+                if product:
+                    tax_rate = Decimal(str(product.tax_rate))
+                else:
+                    tax_rate = Decimal('15.00')
+                
+                # Mapear tarifa a código SRI
+                if tax_rate == Decimal('0.00'):
+                    p_code = '0'
+                elif tax_rate == Decimal('12.00'):
+                    p_code = '2'
+                elif tax_rate == Decimal('15.00'):
+                    p_code = '4'
+                elif tax_rate == Decimal('5.00'):
+                    p_code = '5'
+                else:
+                    p_code = '4'
+                
+                # Calcular impuesto
+                tax_amount = fix_decimal(subtotal * tax_rate / 100, 2)
+                
+                DocumentTax.objects.create(
+                    document=electronic_doc,
+                    item=item,
+                    tax_code="2",
+                    percentage_code=p_code,
+                    rate=tax_rate,
+                    taxable_base=subtotal,
+                    tax_amount=tax_amount
+                )
+                
                 total_subtotal += subtotal
                 total_tax += tax_amount
             
@@ -2075,10 +2106,18 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             electronic_doc.subtotal_without_tax = fix_decimal(total_subtotal, 2)
             electronic_doc.total_tax = fix_decimal(total_tax, 2)
             electronic_doc.total_amount = fix_decimal(total_amount, 2)
-            electronic_doc.status = 'GENERATED'
+            # PENDIENTE = listo para ser procesado por el worker de Celery
+            electronic_doc.status = 'PENDING'
             electronic_doc.save()
             
             logger.info(f'🎉 Invoice ElectronicDocument {electronic_doc.id} created by user {getattr(request.user, "username", "Unknown")}')
+            
+            # Despachar tarea Celery para generar XML, firmar y enviar al SRI
+            try:
+                process_document_async.delay(electronic_doc.id)
+                logger.info(f'✅ Tarea Celery despachada para factura {electronic_doc.id}')
+            except Exception as celery_err:
+                logger.warning(f'⚠️ No se pudo despachar tarea Celery: {celery_err}. La factura se procesará en el siguiente ciclo de check_pending_authorizations.')
             
             # Respuesta con datos de la factura
             response_data = {

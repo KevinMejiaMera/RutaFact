@@ -14,7 +14,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from decimal import Decimal
 from apps.companies.models import Company
-from apps.sri_integration.models import SRIConfiguration, ElectronicDocument
+from apps.sri_integration.models import SRIConfiguration, ElectronicDocument, CreditNote
 from apps.certificates.models import DigitalCertificate
 from django.contrib.auth import get_user_model
 from channels.layers import get_channel_layer
@@ -233,6 +233,94 @@ def admin_retry_invoice(request, pk):
 
 @login_required
 @user_passes_test(is_admin)
+def admin_annul_invoice(request, pk):
+    """Anular una factura autorizada mediante la creación de una Nota de Crédito"""
+    from apps.sri_integration.tasks import process_document_async
+    
+    companies = get_user_companies_secure(request.user)
+    invoice = get_object_or_404(ElectronicDocument, pk=pk, company__in=companies, document_type='INVOICE')
+    
+    # Solo permitir anular facturas autorizadas (o enviadas)
+    if invoice.status not in ['AUTHORIZED', 'SENT']:
+        messages.warning(request, f"Solo se pueden anular facturas que han sido autorizadas o enviadas al SRI. Estado actual: {invoice.status}")
+        return redirect('admin_invoices')
+        
+    # Verificar si ya existe una nota de crédito para esta factura
+    if CreditNote.objects.filter(original_document=invoice, status__in=['DRAFT', 'GENERATED', 'SIGNED', 'SENT', 'AUTHORIZED']).exists():
+        messages.warning(request, f"Ya existe una Nota de Crédito en proceso o autorizada para la factura {invoice.document_number}.")
+        return redirect('admin_invoices')
+        
+    try:
+        with transaction.atomic():
+            # Crear la Nota de Crédito
+            credit_note = CreditNote.objects.create(
+                company=invoice.company,
+                original_document=invoice,
+                reason_code='02', # Anulación de venta
+                reason_description=f"Anulacion de factura {invoice.document_number}",
+                customer_identification_type=invoice.customer_identification_type,
+                customer_identification=invoice.customer_identification,
+                customer_name=invoice.customer_name,
+                customer_address=invoice.customer_address,
+                customer_email=invoice.customer_email,
+                subtotal_without_tax=invoice.subtotal_without_tax,
+                total_tax=invoice.total_tax,
+                total_amount=invoice.total_amount,
+                issue_date=timezone.localtime(timezone.now()).date(),
+                status='DRAFT'
+            )
+            
+            # Encolar procesamiento asíncrono de la Nota de Crédito
+            transaction.on_commit(lambda: process_document_async.delay(credit_note.id, model_type='CreditNote'))
+            
+            # DEVOLVER STOCK A INVENTARIO (NUEVO)
+            items = invoice.additional_data.get('pos_items', [])
+            if items:
+                from apps.inventory.models import ProductStock, StockMovement
+                from apps.invoicing.models import ProductTemplate
+                
+                for item in items:
+                    prod_id = item.get('id')
+                    qty = Decimal(str(item.get('quantity', 0)))
+                    
+                    if prod_id and qty > 0:
+                        prod = ProductTemplate.objects.filter(id=prod_id, company=invoice.company).first()
+                        if prod:
+                            stock, _ = ProductStock.objects.get_or_create(
+                                company=invoice.company, 
+                                product=prod,
+                                defaults={'quantity': 0}
+                            )
+                            prev_stock = stock.quantity
+                            stock.quantity += qty
+                            stock.save()
+                            
+                            # Sincronizar Template
+                            prod.current_stock += qty
+                            prod.save()
+                            
+                            # Registrar movimiento
+                            StockMovement.objects.create(
+                                company=invoice.company,
+                                product=prod,
+                                movement_type='IN', # Entrada por devolución
+                                quantity=qty,
+                                previous_stock=prev_stock,
+                                new_stock=stock.quantity,
+                                reference=f"ANUL-{invoice.document_number}",
+                                notes=f"Devolución por anulación de factura",
+                                created_by=request.user
+                            )
+            
+            messages.success(request, f"Se ha iniciado la anulación de la factura {invoice.document_number} y se ha devuelto el stock al inventario.")
+            
+    except Exception as e:
+        messages.error(request, f"Error al intentar anular la factura: {str(e)}")
+        
+    return redirect('admin_invoices')
+
+@login_required
+@user_passes_test(is_admin)
 def admin_providers_view(request):
     """Vista para gestión de Proveedores"""
     from apps.inventory.models import Provider
@@ -333,122 +421,85 @@ def admin_delete_provider(request, provider_id):
 @user_passes_test(is_admin)
 def admin_purchases_view(request):
     """Vista para gestión de Compras e Ingreso de Inventario"""
-    from apps.inventory.models import Provider, PurchaseInvoice, PurchaseItem
+    from apps.inventory.models import Provider, PurchaseInvoice, StockMovement, ProductStock
+    from apps.inventory.services import InventoryService
     from apps.invoicing.models import ProductTemplate
     
     companies = get_user_companies_secure(request.user)
     company = companies.first()
     
     if request.method == 'POST':
+        print("🚀 [POST] admin_purchases_view started")
+        if not company:
+            print("❌ [POST] No company found")
+            messages.error(request, "No se encontró una empresa asociada a su usuario.")
+            return redirect('admin_purchases')
+            
         try:
             with transaction.atomic():
                 provider_id = request.POST.get('provider')
+                print(f"🔹 Provider ID: {provider_id}")
+                if not provider_id:
+                    raise ValueError("Debe seleccionar un proveedor.")
+                    
                 provider = get_object_or_404(Provider, id=provider_id, company=company)
                 
-                purchase = PurchaseInvoice.objects.create(
-                    company=company,
-                    provider=provider,
-                    invoice_number=request.POST.get('invoice_number'),
-                    issue_date=request.POST.get('issue_date'),
-                    total_amount=request.POST.get('total_amount', 0),
-                    notes=request.POST.get('notes', ''),
-                    created_by=request.user
-                )
-                
-                # Procesar ítems (ahora recibimos nombres y archivos)
+                # Procesar ítems
                 product_names = request.POST.getlist('product_name[]')
                 quantities = request.POST.getlist('quantity[]')
                 costs = request.POST.getlist('cost[]')
                 tax_rates = request.POST.getlist('tax_rate[]')
                 product_images = request.FILES.getlist('product_image[]')
                 
-                total_purchase = 0
+                print(f"🔹 Items to process: {len(product_names)}")
+                
+                # Helper para conversión segura a Decimal
+                def safe_decimal(val, default='0'):
+                    if not val: return Decimal(default)
+                    try:
+                        import re
+                        clean_val = re.sub(r'[^\d.,-]', '', str(val)).replace(',', '.')
+                        return Decimal(clean_val)
+                    except:
+                        return Decimal(default)
+
+                # Preparar items para el servicio
+                items_data = []
                 for i in range(len(product_names)):
-                    name = product_names[i]
+                    name = product_names[i].strip()
                     if not name: continue
                     
-                    qty = Decimal(quantities[i])
-                    cost_inclusive = Decimal(costs[i])
-                    tax_rate = Decimal(tax_rates[i]) if i < len(tax_rates) else Decimal('15.00')
-                    
-                    # DESGLOSE DE IVA: El costo ingresado ya incluye el impuesto
-                    line_total = qty * cost_inclusive
-                    line_subtotal_net = line_total / (Decimal('1.00') + (tax_rate / Decimal('100.00')))
-                    unit_cost_net = cost_inclusive / (Decimal('1.00') + (tax_rate / Decimal('100.00')))
-                    
-                    total_purchase += line_total
-                    
-                    # BUSCAR O CREAR PRODUCTO POR NOMBRE
-                    # Usamos el nombre para buscar. Si no existe, lo creamos ligado a este proveedor.
-                    prod, created = ProductTemplate.objects.get_or_create(
-                        company=company,
-                        name__iexact=name,
-                        defaults={
-                            'name': name,
-                            'main_provider': provider,
-                            'unit_price': Decimal(str(cost_inclusive)) * Decimal('1.30'), # Margen sugerido 30%
-                            'main_code': f"P-{timezone.now().strftime('%y%m%d%H%M%S')}-{i}",
-                            'track_inventory': True,
-                            'unit_of_measure': 'u',
-                            'tax_rate': tax_rate
-                        }
-                    )
-                    
-                    # Si ya existe, actualizamos su IVA por si cambió
-                    if not created:
-                        prod.tax_rate = tax_rate
-                        prod.save()
-                    
-                    # Si se subió una imagen para este ítem específico (asumimos orden coincidente)
-                    # Nota: En web forms tradicionales, los files a veces no coinciden en índice si faltan algunos.
-                    # Una mejor forma es usar nombres únicos para los files, pero por ahora probamos así.
-                    if i < len(product_images) and product_images[i]:
-                        prod.image = product_images[i]
-                        prod.save()
-                    
-                    PurchaseItem.objects.create(
-                        purchase_invoice=purchase,
-                        product=prod,
-                        quantity=qty,
-                        cost_price=unit_cost_net,
-                        subtotal=line_subtotal_net,
-                        created_by=request.user
-                    )
-                    
-                    # ACTUALIZACIÓN DE INVENTARIO (STOCK)
-                    from apps.inventory.models import ProductStock, StockMovement
-                    stock, created_stock = ProductStock.objects.get_or_create(
-                        company=company,
-                        product=prod,
-                        defaults={'quantity': 0}
-                    )
-                    
-                    prev_stock = stock.quantity
-                    stock.quantity += Decimal(str(qty))
-                    stock.last_purchase_price = Decimal(str(cost_inclusive))
-                    stock.save()
-                    
-                    # Registrar movimiento
-                    StockMovement.objects.create(
-                        company=company,
-                        product=prod,
-                        movement_type='IN',
-                        quantity=Decimal(str(qty)),
-                        previous_stock=prev_stock,
-                        new_stock=stock.quantity,
-                        reference=purchase.invoice_number,
-                        notes=f"Compra a {provider.name}",
-                        created_by=request.user
-                    )
+                    items_data.append({
+                        'product_name': name,
+                        'quantity': safe_decimal(quantities[i] if i < len(quantities) else '1', '1'),
+                        'cost_inclusive': safe_decimal(costs[i] if i < len(costs) else '0', '0'),
+                        'tax_rate': safe_decimal(tax_rates[i] if i < len(tax_rates) else '15.00', '15.00'),
+                        'image': product_images[i] if i < len(product_images) else None
+                    })
+
+                print(f"🔹 Prepared items_data: {len(items_data)} items")
+
+                # Llamar al servicio centralizado
+                invoice_data = {
+                    'invoice_number': request.POST.get('invoice_number'),
+                    'issue_date': request.POST.get('issue_date'),
+                    'notes': request.POST.get('notes', '')
+                }
+                print(f"🔹 Invoice data: {invoice_data['invoice_number']}")
                 
-                purchase.total_amount = total_purchase
-                purchase.is_processed = True
-                purchase.save()
+                InventoryService.process_purchase(company, provider, invoice_data, items_data, request.user)
+                print("✅ [POST] InventoryService finished successfully")
                 
-            messages.success(request, f"Compra {purchase.invoice_number} registrada exitosamente")
+            messages.success(request, "Compra registrada y stock actualizado exitosamente")
             return redirect('admin_purchases')
         except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            print(f"🔥 [CRITICAL ERROR] {str(e)}")
+            print(error_trace)
+            logger.error(f"❌ Error al registrar compra: {str(e)}\n{error_trace}")
             messages.error(request, f"Error al registrar compra: {str(e)}")
+            return redirect('admin_purchases')
 
     purchases = []
     providers = []
@@ -480,12 +531,18 @@ def admin_delete_purchase(request, purchase_id):
     try:
         with transaction.atomic():
             # Revertir stock para cada ítem
+            products_to_check = []
             for item in purchase.items.all():
                 stock = ProductStock.objects.filter(company=company, product=item.product).first()
                 if stock:
                     prev_stock = stock.quantity
                     stock.quantity -= Decimal(str(item.quantity))
                     stock.save()
+                    
+                    # SINCRONIZAR CON PRODUCT TEMPLATE
+                    item.product.current_stock -= Decimal(str(item.quantity))
+                    item.product.save()
+                    products_to_check.append(item.product)
                     
                     # Registrar movimiento de reversión
                     StockMovement.objects.create(
@@ -501,6 +558,16 @@ def admin_delete_purchase(request, purchase_id):
                     )
             
             purchase.delete()
+            
+            # Limpiar productos que quedaron en stock 0 y no tienen más compras asociadas
+            for prod in products_to_check:
+                if prod.current_stock <= 0:
+                    # Verificar si no tiene otras compras
+                    if getattr(prod, 'purchase_items', None) and prod.purchase_items.count() == 0:
+                        try:
+                            prod.delete()
+                        except Exception as e:
+                            print(f"No se pudo eliminar producto huerfano {prod.name}: {str(e)}")
             messages.success(request, f"Factura {purchase.invoice_number} eliminada y stock revertido")
     except Exception as e:
         messages.error(request, f"Error al eliminar compra: {str(e)}")
@@ -629,7 +696,7 @@ def admin_pos_view(request):
                     customer_address=customer.address,
                     customer_email=customer.email,
                     customer_phone=customer.phone,
-                    subtotal_without_tax=subtotal_0,
+                    subtotal_without_tax=subtotal_0 + subtotal_iva,
                     subtotal_with_tax=subtotal_iva,
                     total_tax=total_tax,
                     total_discount=total_discount,
@@ -653,6 +720,10 @@ def admin_pos_view(request):
                         prev_stock = stock.quantity
                         stock.quantity -= Decimal(str(item['quantity']))
                         stock.save()
+                        
+                        # SINCRONIZAR CON PRODUCT TEMPLATE
+                        product.current_stock -= Decimal(str(item['quantity']))
+                        product.save()
                         
                         from apps.inventory.models import StockMovement
                         StockMovement.objects.create(
@@ -761,6 +832,58 @@ def admin_edit_product(request, product_id):
 
 @login_required
 @user_passes_test(is_admin)
+def admin_delete_product(request, product_id):
+    """Eliminar producto permanentemente (y sus stocks/movimientos)"""
+    from apps.invoicing.models import ProductTemplate
+    companies = get_user_companies_secure(request.user)
+    company = companies.first()
+    
+    product = get_object_or_404(ProductTemplate, id=product_id, company=company)
+    
+    try:
+        name = product.name
+        # Eliminamos el producto. El on_delete=CASCADE en Stock y Movement se encargará del resto.
+        product.delete()
+        messages.success(request, f"Producto '{name}' eliminado exitosamente.")
+    except Exception as e:
+        messages.error(request, f"Error al eliminar producto: {str(e)}")
+        
+    return redirect('admin_inventory')
+
+@login_required
+@user_passes_test(is_admin)
+def admin_sync_all_data(request):
+    """Sincronización masiva de IVA 15% y stocks (Para mantenimiento)"""
+    from apps.invoicing.models import ProductTemplate
+    from apps.inventory.models import ProductStock
+    
+    companies = get_user_companies_secure(request.user)
+    company = companies.first()
+    
+    try:
+        # 1. IVA 15%
+        ProductTemplate.objects.filter(company=company, tax_rate=Decimal('12.00')).update(tax_rate=Decimal('15.00'))
+        
+        # 2. Stocks
+        products = ProductTemplate.objects.filter(company=company)
+        for prod in products:
+            stock = ProductStock.objects.filter(product=prod, company=company).first()
+            if stock:
+                if prod.current_stock != stock.quantity:
+                    prod.current_stock = stock.quantity
+                    prod.save()
+            else:
+                if prod.current_stock > 0:
+                    ProductStock.objects.create(company=company, product=prod, quantity=prod.current_stock)
+        
+        messages.success(request, "Sincronización de IVA 15% y stocks completada.")
+    except Exception as e:
+        messages.error(request, f"Error en sincronización: {str(e)}")
+        
+    return redirect('admin_inventory')
+
+@login_required
+@user_passes_test(is_admin)
 def admin_adjust_stock(request, stock_id):
     """Ajuste manual de inventario"""
     from apps.inventory.models import ProductStock, StockMovement
@@ -776,6 +899,10 @@ def admin_adjust_stock(request, stock_id):
             prev_stock = stock.quantity
             stock.quantity = new_qty
             stock.save()
+            
+            # SINCRONIZAR CON PRODUCT TEMPLATE
+            stock.product.current_stock = new_qty
+            stock.product.save()
             
             # Registrar movimiento
             StockMovement.objects.create(

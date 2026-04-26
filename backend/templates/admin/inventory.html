@@ -5,24 +5,24 @@
 {% block extra_css %}
 <style>
     .inventory-container {
-        animation: fadeIn 0.5s ease-out;
+        animation: fadeIn 0.6s cubic-bezier(0.165, 0.84, 0.44, 1);
     }
     
     .table-card {
         background: var(--bg-card);
-        border-radius: 24px;
+        border-radius: var(--radius);
         border: 1px solid var(--border);
-        overflow-x: auto;
+        overflow: hidden;
     }
 
     .table-header {
-        padding: 25px;
+        padding: 30px;
         border-bottom: 1px solid var(--border);
         display: flex;
         justify-content: space-between;
         align-items: center;
         flex-wrap: wrap;
-        gap: 15px;
+        gap: 20px;
     }
 
     table {
@@ -33,37 +33,44 @@
 
     th {
         text-align: left;
-        padding: 15px 25px;
+        padding: 18px 30px;
         color: var(--text-dim);
-        font-size: 13px;
+        font-size: 11px;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        background: rgba(255,255,255,0.02);
-    }
-
-    td {
-        padding: 20px 25px;
+        letter-spacing: 1.5px;
+        font-weight: 700;
+        background: rgba(255,255,255,0.01);
         border-bottom: 1px solid var(--border);
     }
 
-    .stock-badge {
-        padding: 5px 12px;
-        border-radius: 8px;
-        font-weight: 700;
+    td {
+        padding: 20px 30px;
+        border-bottom: 1px solid var(--border);
+        color: var(--text-main);
         font-size: 14px;
     }
 
-    .stock-high { background: rgba(76, 175, 80, 0.1); color: #4CAF50; border: 1px solid rgba(76, 175, 80, 0.2); }
-    .stock-low { background: rgba(255, 152, 0, 0.1); color: #FF9800; border: 1px solid rgba(255, 152, 0, 0.2); }
-    .stock-out { background: rgba(244, 67, 54, 0.1); color: #f44336; border: 1px solid rgba(244, 67, 54, 0.2); }
+    .stock-badge {
+        padding: 6px 14px;
+        border-radius: 30px;
+        font-weight: 700;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: inline-block;
+    }
+
+    .stock-high { background: rgba(155, 176, 168, 0.05); color: var(--accent); border: 1px solid rgba(155, 176, 168, 0.1); }
+    .stock-low { background: rgba(196, 164, 132, 0.05); color: var(--warning); border: 1px solid rgba(196, 164, 132, 0.1); }
+    .stock-out { background: rgba(158, 118, 124, 0.05); color: #9E767C; border: 1px solid rgba(158, 118, 124, 0.1); }
 
     .action-btn {
-        background: rgba(255,255,255,0.05);
+        background: rgba(255,255,255,0.01);
         border: 1px solid var(--border);
-        color: var(--text-main);
-        width: 32px;
-        height: 32px;
-        border-radius: 8px;
+        color: var(--text-dim);
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -72,8 +79,9 @@
     }
 
     .action-btn:hover {
-        background: var(--primary);
+        background: var(--primary-light);
         border-color: var(--primary);
+        color: var(--primary);
     }
 
     @keyframes fadeIn {
@@ -96,6 +104,9 @@
                 <p style="color: var(--text-dim); font-size: 14px; margin-top: 5px;">Existencias actuales disponibles para la venta</p>
             </div>
             <div style="display: flex; gap: 10px;">
+                <a href="{% url 'admin_sync_all_data' %}" class="btn-primary" style="background: rgba(76, 175, 80, 0.1); color: #4CAF50; border: 1px solid #4CAF50;">
+                    <i class="fas fa-sync"></i> Sincronizar IVA 15% y Stock
+                </a>
                 <a href="{% url 'admin_purchases' %}" class="btn-primary" style="background: rgba(108, 99, 255, 0.1); color: var(--primary); border: 1px solid var(--primary);">
                     <i class="fas fa-plus"></i> Ingresar Mercadería
                 </a>
@@ -142,7 +153,7 @@
                             <button title="Ver Detalles" class="action-btn" onclick="showStockDetails({{ item.id }})"><i class="fas fa-eye"></i></button>
                             <button title="Editar Producto" class="action-btn" onclick="openEditProductModal({{ item.product.id }})"><i class="fas fa-edit" style="color: #FFC107;"></i></button>
                             <button title="Ajuste Manual" class="action-btn" onclick="openAdjustModal({{ item.id }}, '{{ item.product.name }}', {{ item.quantity }})"><i class="fas fa-tools" style="color: var(--primary);"></i></button>
-                            <button title="Eliminar" class="action-btn" onclick="alert('No se puede eliminar un registro con stock activo. Elimine la compra origen o haga un ajuste a cero.')"><i class="fas fa-trash" style="color: #ff5c5c; opacity: 0.5;"></i></button>
+                            <button title="Eliminar" class="action-btn" onclick="confirmDeleteProduct({{ item.product.id }}, '{{ item.product.name }}')"><i class="fas fa-trash" style="color: #ff5c5c;"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -369,6 +380,11 @@
                 <button class="btn-primary" style="background: transparent; border: 1px solid var(--border); color: white;" onclick="closeDetailModal()">Cerrar</button>
             </div>
         `;
+    }
+    function confirmDeleteProduct(productId, productName) {
+        if (confirm(`¿Estás seguro de que deseas eliminar permanentemente el producto "${productName}"? Esta acción borrará también su historial de stock y movimientos.`)) {
+            window.location.href = `/dashboard/inventory/product/${productId}/delete/`;
+        }
     }
 </script>
 {% endblock %}

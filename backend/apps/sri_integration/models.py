@@ -1306,6 +1306,10 @@ class CreditNote(BaseModel):
     sri_authorization_code = models.CharField(_('SRI authorization code'), max_length=49, blank=True)
     sri_authorization_date = models.DateTimeField(_('SRI authorization date'), null=True, blank=True)
     
+    @property
+    def document_type(self):
+        return 'CREDIT_NOTE'
+        
     class Meta:
         verbose_name = _('Credit Note')
         verbose_name_plural = _('Credit Notes')
@@ -1496,6 +1500,10 @@ class DebitNote(BaseModel):
     sri_authorization_code = models.CharField(_('SRI authorization code'), max_length=49, blank=True)
     sri_authorization_date = models.DateTimeField(_('SRI authorization date'), null=True, blank=True)
     
+    @property
+    def document_type(self):
+        return 'DEBIT_NOTE'
+        
     class Meta:
         verbose_name = _('Debit Note')
         verbose_name_plural = _('Debit Notes')

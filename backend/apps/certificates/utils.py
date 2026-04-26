@@ -53,46 +53,86 @@ def extract_ecuador_ruc(cert):
     ruc = ""
     name = ""
     
-    # OIDs Específicos para Ecuador
+    # OIDs Específicos para Ecuador (Atributos de Sujeto)
     OID_RUC_UANATACA = "1.3.6.1.4.1.37947.3.1"
-    OID_RUC_SECURITY_DATA = "1.3.6.1.4.1.37442.2.1.1" # OID común en Security Data
-    OID_CEDULA = "1.3.6.1.4.1.37947.3.10" # Cédula en algunos proveedores
+    OID_RUC_SECURITY_DATA = "1.3.6.1.4.1.37442.2.1.1"
+    OID_CEDULA = "1.3.6.1.4.1.37947.3.10"
     
+    # --- 1. BUSCAR EN ATRIBUTOS DEL SUJETO ---
     for attr in cert.subject:
         oid = attr.oid.dotted_string
         val = str(attr.value).strip()
         
-        # 1. Buscar por OIDs conocidos
+        # OIDs conocidos en Sujeto
         if oid in [OID_RUC_UANATACA, OID_RUC_SECURITY_DATA]:
             ruc = val
         
-        # 2. Buscar por serialNumber (Muy común)
+        # Buscar por serialNumber (Muy común: BCE, Security Data, etc.)
         elif attr.oid == NameOID.SERIAL_NUMBER:
             clean_val = ''.join(filter(str.isdigit, val))
             if len(clean_val) == 13:
                 ruc = clean_val
             elif len(clean_val) == 10 and not ruc:
-                # Si es cédula, convertir a RUC
                 ruc = clean_val + "001"
         
-        # 3. Buscar Nombre / Razón Social
+        # Buscar Nombre / Razón Social
         elif attr.oid == NameOID.COMMON_NAME:
             name = val
-            # A veces el RUC viene dentro del Common Name
             if not ruc:
                 match = re.search(r'(\d{13})', val)
                 if match:
                     ruc = match.group(1)
                 else:
-                    # Buscar cédula en el nombre
                     match_ced = re.search(r'(\d{10})', val)
                     if match_ced:
                         ruc = match_ced.group(1) + "001"
+
+    # --- 2. BUSCAR EN EXTENSIONES (NUEVO: FIRMASEGURA y otros) ---
+    # Algunos proveedores ponen el RUC en extensiones personalizadas
+    try:
+        for ext in cert.extensions:
+            oid = ext.oid.dotted_string
+            
+            # FIRMASEGURA S.A.S. (Específico)
+            # 1.3.6.1.4.1.61305.3.11 = RUC
+            # 1.3.6.1.4.1.61305.3.10 = Razón Social
+            if oid == "1.3.6.1.4.1.61305.3.11":
+                val = ext.value.value
+                if isinstance(val, bytes):
+                    # El valor suele venir con un prefijo de tipo ASN.1 (ej. \x16)
+                    # Intentamos limpiar caracteres no imprimibles
+                    val_str = ''.join(c for c in val.decode('latin-1', errors='ignore') if c.isdigit())
+                    if len(val_str) == 13:
+                        ruc = val_str
+                elif isinstance(val, str):
+                    clean_val = ''.join(filter(str.isdigit, val))
+                    if len(clean_val) == 13:
+                        ruc = clean_val
+
+            if oid == "1.3.6.1.4.1.61305.3.10" and not name:
+                val = ext.value.value
+                if isinstance(val, bytes):
+                    # Decodificar y quitar posibles prefijos binarios de ASN.1
+                    name = val.decode('latin-1', errors='ignore')
+                    # Eliminar caracteres de control iniciales
+                    name = re.sub(r'^[\x00-\x1F]+', '', name).strip()
+                elif isinstance(val, str):
+                    name = val.strip()
+
+    except Exception as e:
+        logger.warning(f"Error explorando extensiones de certificado: {e}")
 
     # Limpieza final
     if ruc:
         ruc = ''.join(filter(str.isdigit, ruc))
         if len(ruc) == 10:
             ruc += "001"
+    
+    # Si aún no hay nombre, usar el Common Name como fallback
+    if not name:
+        for attr in cert.subject:
+            if attr.oid == NameOID.COMMON_NAME:
+                name = str(attr.value).strip()
+                break
             
     return ruc, name

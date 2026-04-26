@@ -1,446 +1,547 @@
 {% extends "base.html" %}
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-{% block page_title %}Configuración de Firma Matriz{% endblock %}
+{% block page_title %}Configuración Maestra | Matriz{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width: 800px; margin: 0 auto; padding: 40px;">
-    <div style="text-align: center; margin-bottom: 30px;">
-        <div style="background: rgba(108, 99, 255, 0.1); width: 80px; height: 80px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
-            <i class="fas fa-file-signature" style="color: var(--primary); font-size: 32px;"></i>
+<!-- SweetAlert2 for Premium Notifications -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<div class="unified-config-container">
+    
+    <!-- 🏢 HEADER DE ESTADO DE LA MATRIZ -->
+    <div class="config-header card">
+        <div class="header-main">
+            <div class="company-badge">
+                <div class="badge-icon">
+                    <i class="fas fa-building"></i>
+                </div>
+                <div class="badge-text">
+                    <h1>{{ company.business_name }}</h1>
+                    <p>RUC: <span class="highlight">{{ company.ruc }}</span> | <span class="status-pill {% if company.is_active %}active{% else %}inactive{% endif %}">{% if company.is_active %}Empresa Activa{% else %}Empresa Inactiva{% endif %}</span></p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn-secondary" onclick="syncFromCertificate()">
+                    <i class="fas fa-sync"></i> Sincronizar Datos
+                </button>
+                <button class="btn-primary" onclick="submitMasterForm()">
+                    <i class="fas fa-save"></i> Guardar Cambios
+                </button>
+            </div>
         </div>
-        <h2>Configuración de Firma Electrónica</h2>
-        <p style="color: var(--text-dim);">Sube tu certificado .p12 para activar la facturación en todos los dispositivos.</p>
     </div>
 
-    {% if certificate %}
-    <!-- ✅ FIRMA YA CONFIGURADA -->
-    <div style="background: rgba(76, 175, 80, 0.05); border: 1px solid rgba(76, 175, 80, 0.2); border-radius: 12px; padding: 25px; margin-bottom: 30px;">
-        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
-            <div style="display: flex; gap: 15px; align-items: center;">
-                <div style="background: #4CAF50; width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">
-                    <i class="fas fa-certificate"></i>
+    <div class="config-grid">
+        <!-- 📑 COLUMNA IZQUIERDA: FIRMA Y CONFIGURACIÓN SRI (Solicitado por el usuario) -->
+        <div class="config-col">
+            
+            <!-- 🔑 SECCIÓN: FIRMA ELECTRÓNICA -->
+            <section class="card config-section animate-up">
+                <div class="section-title">
+                    <i class="fas fa-file-signature"></i>
+                    <h3>Firma Electrónica (.p12)</h3>
                 </div>
-                <div>
-                    <h3 style="margin: 0; font-size: 18px;">{{ certificate.subject_name|truncatechars:40 }}</h3>
-                    <span style="font-size: 12px; color: #4CAF50; font-weight: bold; text-transform: uppercase;">● Firma Activa</span>
-                </div>
-            </div>
-            <button onclick="deleteCertificate()" style="background: rgba(244, 67, 54, 0.1); color: #f44336; border: 1px solid #f44336; padding: 8px 15px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.3s;">
-                <i class="fas fa-trash-alt"></i> ELIMINAR FIRMA
-            </button>
-        </div>
-        
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px;">
-            <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; border: 1px solid var(--border);">
-                <span style="display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; text-transform: uppercase;">RUC</span>
-                <span style="font-weight: bold; color: var(--primary);">{{ certificate.extracted_ruc|default:company.ruc }}</span>
-            </div>
-            <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; border: 1px solid var(--border);">
-                <span style="display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; text-transform: uppercase;">Ambiente SRI</span>
-                <select id="envSelector" onchange="updateEnvironment(this.value)" style="background: var(--bg-dark); color: white; border: 1px solid var(--border); border-radius: 5px; padding: 2px 5px; font-weight: bold; cursor: pointer; width: 100%;">
-                    <option value="TEST" {% if certificate.environment == 'TEST' %}selected{% endif %}>PRUEBAS (TEST)</option>
-                    <option value="PRODUCTION" {% if certificate.environment == 'PRODUCTION' %}selected{% endif %}>PRODUCCIÓN</option>
-                </select>
-            </div>
-            <div style="background: rgba(108, 99, 255, 0.1); padding: 15px; border-radius: 10px; border: 1px solid var(--primary); display: flex; align-items: center; justify-content: center; cursor: pointer;" onclick="syncFromCertificate()">
-                <div style="text-align: center;">
-                    <i class="fas fa-sync-alt" style="color: var(--primary); margin-bottom: 5px; display: block;"></i>
-                    <span style="display: block; font-size: 9px; color: var(--primary); font-weight: bold; text-transform: uppercase;">SINCRONIZAR DATOS</span>
-                </div>
-            </div>
-            <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; border: 1px solid var(--border);">
-                <span style="display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; text-transform: uppercase;">Vencimiento</span>
-                <span style="font-weight: bold; {% if certificate.is_expired %}color: #f44336;{% endif %}">{{ certificate.valid_to|date:"d/m/Y" }}</span>
-            </div>
-        </div>
-    </div>
-    {% else %}
-    <!-- 📥 ZONA DE CARGA (Si no hay firma) -->
-    <div style="background: rgba(108, 99, 255, 0.05); border: 2px dashed var(--primary); border-radius: 15px; padding: 40px; text-align: center; margin-bottom: 30px; cursor: pointer;" id="dropZone">
-        <i class="fas fa-cloud-upload-alt" style="font-size: 48px; color: var(--primary); margin-bottom: 15px;"></i>
-        <h3 id="fileName">Sube tu Firma Electrónica (.p12)</h3>
-        <p style="color: var(--text-dim);">Necesaria para autorizar documentos ante el SRI</p>
-        <input type="file" id="certFile" accept=".p12,.pfx" style="display: none;">
-        
-        <div style="max-width: 400px; margin: 20px auto 0;">
-            <input type="password" id="certPassword" placeholder="Contraseña del certificado" style="width: 100%; padding: 12px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: white; text-align: center;">
-            <button type="button" id="btnValidate" class="btn-primary" style="width: 100%; margin-top: 15px; padding: 12px;">
-                <i class="fas fa-check-circle"></i> VALIDAR Y ACTIVAR FIRMA
-            </button>
-        </div>
-    </div>
-    {% endif %}
 
-    <!-- 🏢 FORMULARIO DE CONFIGURACIÓN MAESTRA -->
-    <form id="masterConfigForm" enctype="multipart/form-data" style="display: grid; gap: 30px;">
-        
-        <!-- SECCIÓN: IDENTIDAD Y LOGO -->
-        <div class="config-section">
-            <h4 style="color: var(--primary); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-id-card"></i> Identidad y Marca
-            </h4>
-            <div style="display: grid; grid-template-columns: 180px 1fr; gap: 25px; align-items: center;">
-                <div style="text-align: center;">
-                    <div id="logoPreview" style="width: 150px; height: 150px; border-radius: 15px; border: 2px dashed var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; background: rgba(255,255,255,0.02); cursor: pointer; position: relative;">
-                        {% if company.logo %}
-                            <img src="{{ company.logo.url }}" style="width: 100%; height: 100%; object-fit: contain;">
-                        {% else %}
-                            <i class="fas fa-image" style="font-size: 40px; color: var(--border);"></i>
-                        {% endif %}
-                        <div style="position: absolute; bottom: 0; background: rgba(0,0,0,0.6); width: 100%; padding: 5px; font-size: 10px; color: white;">CAMBIAR LOGO</div>
+                {% if certificate %}
+                <div class="signature-active">
+                    <div class="sig-status">
+                        <div class="sig-icon success">
+                            <i class="fas fa-certificate"></i>
+                        </div>
+                        <div class="sig-info">
+                            <h4>Certificado: {{ certificate.extracted_name|default:certificate.subject_name|truncatechars:30 }}</h4>
+                            <p>Vence: <span class="{% if certificate.is_expired %}text-danger{% endif %}">{{ certificate.valid_to|date:"d M Y" }}</span></p>
+                        </div>
                     </div>
-                    <input type="file" id="logoFile" name="logo" accept="image/*" style="display: none;">
+                    
+                    {% if certificate.extracted_ruc != company.ruc %}
+                    <div class="alert-warning-mini">
+                        <i class="fas fa-exclamation-triangle"></i> El RUC de la firma ({{ certificate.extracted_ruc }}) no coincide con el de la empresa.
+                    </div>
+                    {% endif %}
+
+                    <div class="sig-meta">
+                        <div class="meta-item">
+                            <label>RUC Firma</label>
+                            <span>{{ certificate.extracted_ruc }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <label>Ambiente Actual</label>
+                            <select onchange="updateEnvironment(this.value)" class="mini-select">
+                                <option value="TEST" {% if certificate.environment == 'TEST' %}selected{% endif %}>Pruebas</option>
+                                <option value="PRODUCTION" {% if certificate.environment == 'PRODUCTION' %}selected{% endif %}>Producción</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn-danger-outline w-100 mt-20" onclick="deleteCertificate()">
+                        <i class="fas fa-trash-alt"></i> Eliminar Firma
+                    </button>
                 </div>
-                <div style="display: grid; gap: 15px;">
+                {% else %}
+                <div class="signature-upload" onclick="document.getElementById('certFile').click()" id="dropZone">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <h4>Cargar Firma Digital</h4>
+                    <p>Sube tu archivo .p12 para firmar documentos</p>
+                    <input type="file" id="certFile" accept=".p12,.pfx" style="display: none;">
+                </div>
+                <div id="uploadForm" class="hidden mt-20 animate-fade">
+                    <div class="input-group">
+                        <input type="password" id="certPassword" placeholder="Contraseña del certificado" class="form-control text-center">
+                        <button class="btn-primary w-100 mt-10" id="btnValidate">
+                            Validar y Activar
+                        </button>
+                    </div>
+                </div>
+                {% endif %}
+            </section>
+
+            <!-- ⚙️ SECCIÓN: PARÁMETROS SRI -->
+            <section class="card config-section animate-up" style="animation-delay: 0.1s;">
+                <div class="section-title">
+                    <i class="fas fa-cogs"></i>
+                    <h3>Configuración SRI</h3>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
-                        <label>Nombre Comercial (Aparece en la factura)</label>
-                        <input type="text" name="trade_name" value="{{ company.trade_name }}" placeholder="Ej: Mi Tienda Online" class="form-control">
+                        <label>Establecimiento (Ej: 001)</label>
+                        <input type="text" form="masterConfigForm" name="codigo_establecimiento" value="{{ company.codigo_establecimiento }}" class="form-control text-center highlight-input" maxlength="3" onblur="padInput(this, 3)">
                     </div>
                     <div class="form-group">
-                        <label>Régimen Tributario</label>
-                        <select name="regimen" class="form-control">
-                            <option value="GENERAL" {% if company.regimen == 'GENERAL' %}selected{% endif %}>Régimen General</option>
-                            <option value="RIMPE_EMPRENDEDOR" {% if company.regimen == 'RIMPE_EMPRENDEDOR' %}selected{% endif %}>Régimen RIMPE - Emprendedor</option>
-                            <option value="RIMPE_POPULAR" {% if company.regimen == 'RIMPE_POPULAR' %}selected{% endif %}>Régimen RIMPE - Negocio Popular</option>
-                            <option value="AGROPECUARIO" {% if company.regimen == 'AGROPECUARIO' %}selected{% endif %}>Régimen Agropecuario</option>
+                        <label>Punto Emisión (Ej: 001)</label>
+                        <input type="text" form="masterConfigForm" name="codigo_punto_emision" value="{{ company.codigo_punto_emision }}" class="form-control text-center highlight-input" maxlength="3" onblur="padInput(this, 3)">
+                    </div>
+                </div>
+                <div class="form-row mt-10">
+                    <div class="form-group">
+                        <label>Siguiente Factura</label>
+                        <input type="number" form="masterConfigForm" name="secuencial_factura" value="{{ company.secuencial_factura }}" class="form-control text-center">
+                    </div>
+                    <div class="form-group">
+                        <label>Siguiente Retención</label>
+                        <input type="number" form="masterConfigForm" name="secuencial_retencion" value="{{ company.secuencial_retencion }}" class="form-control text-center">
+                    </div>
+                </div>
+                <div class="alert-info-mini mt-10">
+                    <i class="fas fa-info-circle"></i> Asegúrate de que el establecimiento esté <strong>abierto</strong> y activo en el SRI.
+                </div>
+            </section>
+        </div>
+
+        <!-- 📑 COLUMNA DERECHA: IDENTIDAD LEGAL Y EMPRESA -->
+        <div class="config-col">
+            
+            <!-- 🏛️ SECCIÓN: DATOS LEGALES -->
+            <section class="card config-section animate-up" style="animation-delay: 0.2s;">
+                <div class="section-title">
+                    <i class="fas fa-id-card"></i>
+                    <h3>Identidad Legal (Empresa)</h3>
+                </div>
+                <div class="form-group">
+                    <label>Razón Social / Propietario</label>
+                    <input type="text" form="masterConfigForm" name="business_name" value="{{ company.business_name }}" class="form-control" placeholder="Razón Social">
+                </div>
+                <div class="form-group">
+                    <label>RUC de la Empresa</label>
+                    <input type="text" form="masterConfigForm" name="ruc" value="{{ company.ruc }}" class="form-control" placeholder="RUC">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Tipo de Contribuyente</label>
+                        <select form="masterConfigForm" name="tipo_contribuyente" class="form-control">
+                            <option value="PERSONA_NATURAL" {% if company.tipo_contribuyente == 'PERSONA_NATURAL' %}selected{% endif %}>Persona Natural</option>
+                            <option value="EMPRESA_PRIVADA" {% if company.tipo_contribuyente == 'EMPRESA_PRIVADA' %}selected{% endif %}>Empresa Privada</option>
+                            <option value="EMPRESA_PUBLICA" {% if company.tipo_contribuyente == 'EMPRESA_PUBLICA' %}selected{% endif %}>Empresa Pública</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Obligado Contabilidad</label>
+                        <select form="masterConfigForm" name="obligado_contabilidad" class="form-control">
+                            <option value="SI" {% if company.obligado_contabilidad == 'SI' %}selected{% endif %}>Sí</option>
+                            <option value="NO" {% if company.obligado_contabilidad == 'NO' %}selected{% endif %}>No</option>
                         </select>
                     </div>
                 </div>
-            </div>
-        </div>
+                <div class="form-group">
+                    <label>Régimen Tributario</label>
+                    <select form="masterConfigForm" name="regimen" class="form-control">
+                        <option value="GENERAL" {% if company.regimen == 'GENERAL' %}selected{% endif %}>General</option>
+                        <option value="RIMPE_EMPRENDEDOR" {% if company.regimen == 'RIMPE_EMPRENDEDOR' %}selected{% endif %}>RIMPE Emprendedor</option>
+                        <option value="RIMPE_POPULAR" {% if company.regimen == 'RIMPE_POPULAR' %}selected{% endif %}>RIMPE Popular</option>
+                    </select>
+                </div>
+            </section>
 
-        <!-- SECCIÓN: UBICACIÓN Y CONTACTO -->
-        <div class="config-section">
-            <h4 style="color: var(--primary); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-map-marker-alt"></i> Ubicación y Contacto Matriz
-            </h4>
-            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
-                <div class="form-group">
-                    <label>Dirección Matriz (Exactamente como en el RUC)</label>
-                    <input type="text" name="address" value="{{ company.address }}" class="form-control">
+            <!-- 📍 SECCIÓN: UBICACIÓN Y CONTACTO -->
+            <section class="card config-section animate-up" style="animation-delay: 0.3s;">
+                <div class="section-title">
+                    <i class="fas fa-map-marked-alt"></i>
+                    <h3>Ubicación y Marca</h3>
+                </div>
+                <div class="logo-manager">
+                    <div class="logo-preview" id="logoPreview">
+                        {% if company.logo %}
+                        <img src="{{ company.logo.url }}" alt="Logo">
+                        {% else %}
+                        <i class="fas fa-image"></i>
+                        {% endif %}
+                        <div class="logo-overlay"><i class="fas fa-camera"></i></div>
+                    </div>
+                    <input type="file" id="logoFile" name="logo" form="masterConfigForm" accept="image/*" class="hidden">
+                    <div class="logo-info">
+                        <label>Logo para Facturas</label>
+                        <p>Haz clic en la imagen para cambiar el logo.</p>
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label>Teléfono</label>
-                    <input type="text" name="phone" value="{{ company.phone }}" class="form-control">
-                </div>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 15px;">
-                <div class="form-group">
-                    <label>Provincia</label>
-                    <input type="text" name="provincia" value="{{ company.provincia }}" class="form-control">
+                    <label>Nombre Comercial</label>
+                    <input type="text" form="masterConfigForm" name="trade_name" value="{{ company.trade_name }}" class="form-control" placeholder="Ej: Mi Negocio">
                 </div>
                 <div class="form-group">
-                    <label>Ciudad</label>
-                    <input type="text" name="ciudad" value="{{ company.ciudad }}" class="form-control">
+                    <label>Dirección Matriz</label>
+                    <input type="text" form="masterConfigForm" name="address" value="{{ company.address }}" class="form-control">
                 </div>
-                <div class="form-group">
-                    <label>Código Postal</label>
-                    <input type="text" name="codigo_postal" value="{{ company.codigo_postal }}" class="form-control">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" form="masterConfigForm" name="email" value="{{ company.email }}" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Teléfono</label>
+                        <input type="text" form="masterConfigForm" name="phone" value="{{ company.phone }}" class="form-control">
+                    </div>
                 </div>
-            </div>
+            </section>
         </div>
+    </div>
 
-        <!-- SECCIÓN: CONTROL DE SECUENCIALES -->
-        <div class="config-section" style="background: rgba(255, 140, 66, 0.02); border: 1px solid rgba(255, 140, 66, 0.1);">
-            <h4 style="color: var(--accent); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-sort-numeric-up"></i> Secuenciales de Documentos
-            </h4>
-            <p style="font-size: 12px; color: var(--text-dim); margin-bottom: 15px;">Configura el número de inicio para tus comprobantes si ya vienes facturando con otro sistema.</p>
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
-                <div class="form-group">
-                    <label>Próxima Factura</label>
-                    <input type="number" name="secuencial_factura" value="{{ company.secuencial_factura }}" class="form-control" style="color: var(--accent); font-weight: bold;">
-                </div>
-                <div class="form-group">
-                    <label>Próxima N. Crédito</label>
-                    <input type="number" name="secuencial_nota_credito" value="{{ company.secuencial_nota_credito }}" class="form-control">
-                </div>
-                <div class="form-group">
-                    <label>Próxima Retención</label>
-                    <input type="number" name="secuencial_retencion" value="{{ company.secuencial_retencion }}" class="form-control">
-                </div>
-                <div class="form-group">
-                    <label>Código Establecimiento</label>
-                    <input type="text" id="id_codigo_establecimiento" name="codigo_establecimiento" value="{{ company.codigo_establecimiento }}" class="form-control" maxlength="3" placeholder="001">
-                </div>
-                <div class="form-group">
-                    <label>Punto de Emisión</label>
-                    <input type="text" id="id_codigo_punto_emision" name="codigo_punto_emision" value="{{ company.codigo_punto_emision }}" class="form-control" maxlength="3" placeholder="001">
-                </div>
-            </div>
-        </div>
-
-        <button type="submit" id="btnSaveMaster" class="btn-primary" style="padding: 20px; font-size: 18px; border-radius: 12px; box-shadow: 0 10px 20px rgba(108, 99, 255, 0.3);">
-            <i class="fas fa-save"></i> GUARDAR CONFIGURACIÓN MAESTRA
-        </button>
+    <!-- Formulario real (oculto para procesar datos) -->
+    <form id="masterConfigForm" enctype="multipart/form-data" class="hidden">
+        {% csrf_token %}
     </form>
-
-    <style>
-        .config-section {
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--border);
-            border-radius: 15px;
-            padding: 25px;
-        }
-        .form-control {
-            width: 100%;
-            padding: 12px;
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: white;
-            font-size: 14px;
-        }
-        .form-control:focus {
-            border-color: var(--primary);
-            outline: none;
-            box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.2);
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text-dim);
-        }
-    </style>
 </div>
 
-<script>
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('certFile');
-    const fileName = document.getElementById('fileName');
-    const btnValidate = document.getElementById('btnValidate');
-    const btnSave = document.getElementById('btnSave');
-    const statusAlert = document.getElementById('statusAlert');
-    const statusText = document.getElementById('statusText');
-
-    let selectedFile = null;
-
-    // Solo configurar si los elementos existen (Zona de carga de firma)
-    if (dropZone && fileInput) {
-        dropZone.onclick = () => fileInput.click();
-        
-        fileInput.onchange = (e) => {
-            if (e.target.files.length > 0) {
-                selectedFile = e.target.files[0];
-                if (fileName) {
-                    fileName.innerText = selectedFile.name;
-                    fileName.style.color = 'var(--primary)';
-                }
-            }
-        };
+<style>
+    :root {
+        --primary: #B08B90; /* Pastel Muted Rose */
+        --primary-light: rgba(176, 139, 144, 0.05);
+        --success: #9BB0A8; /* Pastel Muted Sage */
+        --danger: #9E767C;
+        --warning: #C4A484; /* Pastel Muted Amber */
+        --text-main: #DEDEDE;
+        --text-dim: #666666;
+        --bg-dark: #000000;
+        --bg-card: #080808;
+        --border: rgba(255, 255, 255, 0.05);
+        --shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
     }
 
-    if (btnValidate) {
+    .unified-config-container {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding-bottom: 50px;
+    }
+
+    .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 30px;
+        box-shadow: var(--shadow);
+    }
+
+    .config-header {
+        margin-bottom: 30px;
+        border-left: 4px solid var(--primary);
+    }
+    .header-main { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+    .company-badge { display: flex; align-items: center; gap: 20px; }
+    .badge-icon { background: var(--primary-light); width: 60px; height: 60px; border-radius: 16px; display: flex; align-items: center; justify-content: center; color: var(--primary); font-size: 24px; border: 1px solid var(--border); }
+    .badge-text h1 { font-size: 22px; margin: 0 0 5px 0; font-weight: 700; color: var(--text-main); }
+    .badge-text p { font-size: 14px; color: var(--text-dim); margin: 0; }
+    .highlight { color: var(--primary); font-weight: bold; }
+    .status-pill { padding: 4px 12px; border-radius: 30px; font-size: 10px; text-transform: uppercase; font-weight: 800; margin-left: 10px; }
+    .status-pill.active { background: rgba(155, 176, 168, 0.1); color: var(--success); }
+    .status-pill.inactive { background: rgba(158, 118, 124, 0.1); color: var(--danger); }
+
+    .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+    @media (max-width: 900px) { .config-grid { grid-template-columns: 1fr; } }
+
+    .config-section { margin-bottom: 30px; }
+    .section-title { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 1px solid var(--border); }
+    .section-title i { color: var(--primary); font-size: 16px; opacity: 0.8; }
+    .section-title h3 { font-size: 14px; margin: 0; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); }
+
+    .form-group { margin-bottom: 20px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-control { width: 100%; padding: 14px 18px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); border-radius: 12px; color: var(--text-main); font-size: 14px; transition: 0.3s; }
+    .form-control:focus { border-color: var(--primary); outline: none; background: rgba(255, 255, 255, 0.04); }
+    .highlight-input { border-color: rgba(176, 139, 144, 0.2); font-weight: 700; color: var(--primary); font-size: 20px; letter-spacing: 3px; }
+
+    .btn-primary { background: var(--primary); color: #000; border: none; padding: 14px 28px; border-radius: 14px; font-weight: 700; cursor: pointer; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 10px; text-transform: uppercase; letter-spacing: 1px; font-size: 13px; }
+    .btn-primary:hover { transform: translateY(-2px); background: #C4A484; }
+    .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 14px 25px; border-radius: 14px; font-weight: 600; cursor: pointer; transition: 0.3s; font-size: 13px; }
+    .btn-secondary:hover { background: rgba(255,255,255,0.03); }
+    .btn-danger-outline { background: transparent; border: 1px solid var(--danger); color: var(--danger); padding: 12px; border-radius: 12px; cursor: pointer; transition: 0.3s; font-weight: 700; font-size: 12px; text-transform: uppercase; }
+    .btn-danger-outline:hover { background: var(--danger); color: #000; }
+
+    .signature-active { background: rgba(255, 255, 255, 0.01); border: 1px solid var(--border); border-radius: 18px; padding: 25px; }
+    .sig-status { display: flex; align-items: center; gap: 20px; margin-bottom: 25px; }
+    .sig-icon { width: 50px; height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+    .sig-icon.success { background: rgba(155, 176, 168, 0.1); color: var(--success); }
+    .sig-info h4 { font-size: 15px; margin: 0 0 5px 0; color: var(--text-main); }
+    .sig-info p { font-size: 12px; color: var(--text-dim); margin: 0; }
+    .sig-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .meta-item { background: rgba(255,255,255,0.01); padding: 12px; border-radius: 10px; border: 1px solid var(--border); }
+    .meta-item label { margin: 0 0 5px 0; font-size: 9px; }
+    .meta-item span { font-weight: 700; font-size: 14px; color: var(--primary); }
+    .mini-select { background: transparent; border: none; color: var(--text-main); font-weight: 700; width: 100%; cursor: pointer; font-size: 13px; outline: none; }
+
+    .alert-warning-mini { background: rgba(196, 164, 132, 0.05); border: 1px solid rgba(196, 164, 132, 0.1); color: var(--warning); padding: 12px; border-radius: 10px; font-size: 11px; margin-bottom: 20px; }
+    .alert-info-mini { background: rgba(155, 176, 168, 0.05); border: 1px solid rgba(155, 176, 168, 0.1); color: var(--accent); padding: 12px; border-radius: 10px; font-size: 11px; }
+
+    .signature-upload { border: 2px dashed var(--border); background: rgba(255,255,255,0.01); padding: 50px 25px; border-radius: 20px; text-align: center; cursor: pointer; transition: 0.3s; }
+    .signature-upload:hover { border-color: var(--primary); background: rgba(176, 139, 144, 0.03); }
+    .upload-icon { font-size: 45px; color: var(--primary); margin-bottom: 20px; opacity: 0.6; }
+
+    .logo-manager { display: flex; align-items: center; gap: 25px; margin-bottom: 30px; }
+    .logo-preview { width: 110px; height: 110px; border-radius: 20px; background: rgba(0,0,0,0.4); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; cursor: pointer; transition: 0.3s; }
+    .logo-preview img { width: 100%; height: 100%; object-fit: contain; padding: 10px; }
+    .logo-preview i { font-size: 35px; color: var(--text-dim); opacity: 0.3; }
+    .logo-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; opacity: 0; transition: 0.3s; color: white; }
+    .logo-preview:hover .logo-overlay { opacity: 1; }
+    .logo-preview:hover { border-color: var(--primary); }
+
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-up { animation: fadeInUp 0.5s cubic-bezier(0.165, 0.84, 0.44, 1) backwards; }
+    .animate-fade { animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .hidden { display: none; }
+    .text-center { text-align: center; }
+    .mt-10 { margin-top: 10px; }
+    .mt-20 { margin-top: 20px; }
+    .w-100 { width: 100%; }
+</style>
+
+<script>
+    // --- PADDING AUTOMÁTICO ---
+    function padInput(el, length) {
+        if (el.value && el.value.length > 0) {
+            el.value = el.value.padStart(length, '0');
+        }
+    }
+
+    // --- LÓGICA DE CARGA DE FIRMA ---
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('certFile');
+    const uploadForm = document.getElementById('uploadForm');
+    const btnValidate = document.getElementById('btnValidate');
+
+    if (dropZone) {
+        fileInput.onchange = (e) => {
+            if (e.target.files.length > 0) {
+                dropZone.innerHTML = `
+                    <div class="upload-icon"><i class="fas fa-file-invoice"></i></div>
+                    <h4>${e.target.files[0].name}</h4>
+                    <p>Archivo seleccionado correctamente</p>
+                `;
+                uploadForm.classList.remove('hidden');
+            }
+        };
+
         btnValidate.onclick = async () => {
             const password = document.getElementById('certPassword').value;
-            if (!selectedFile || !password) {
-                alert("Por favor, selecciona un archivo y escribe la contraseña.");
+            if (!fileInput.files[0] || !password) {
+                Swal.fire('Atención', 'Selecciona un archivo y escribe la contraseña', 'warning');
                 return;
             }
 
-            btnValidate.innerHTML = '<i class="fas fa-spinner fa-spin"></i> VALIDANDO...';
+            btnValidate.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validando...';
             btnValidate.disabled = true;
 
             const formData = new FormData();
-            formData.append('certificate_file', selectedFile);
+            formData.append('certificate_file', fileInput.files[0]);
             formData.append('password', password);
-            formData.append('company', "{{ company.id|default:'' }}");
-            formData.append('environment', 'TEST');
+            formData.append('company', "{{ company.id }}");
 
             try {
                 const response = await fetch('/api/certificates/upload_certificate/', {
                     method: 'POST',
                     body: formData,
-                    headers: {
-                        'X-CSRFToken': '{{ csrf_token }}'
-                    }
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' }
                 });
 
                 const data = await response.json();
-
                 if (response.ok) {
-                    document.getElementById('extractedRuc').value = data.extracted_ruc || "No detectado";
-                    document.getElementById('extractedName').value = data.extracted_name || data.subject;
-                    document.getElementById('extractedExpiry').value = new Date(data.valid_to).toLocaleDateString();
-                    
-                    statusAlert.style.display = 'block';
-                    statusAlert.style.background = 'rgba(76, 175, 80, 0.1)';
-                    statusAlert.style.borderLeftColor = '#4CAF50';
-                    
-                    const isNew = !("{{ company.id }}" && "{{ company.id }}" !== "None");
-                    statusText.innerText = isNew 
-                        ? "✅ ¡Excelente! Hemos detectado tu RUC: " + data.extracted_ruc + ". Haz clic abajo para crear tu Matriz."
-                        : "✅ Firma validada correctamente para: " + (data.extracted_name || "Contribuyente");
-                    
-                    statusText.style.color = '#4CAF50';
-                    
-                    if (isNew && btnSave) {
-                        btnSave.innerHTML = '<i class="fas fa-plus-circle"></i> CREAR MATRIZ Y ACTIVAR SISTEMA';
-                    }
-                    if (btnSave) btnSave.disabled = false;
+                    Swal.fire({
+                        icon: 'success',
+                        title: '¡Firma Activada!',
+                        text: 'Extrayendo datos: ' + data.extracted_ruc,
+                        timer: 2000,
+                        showConfirmButton: false
+                    }).then(() => location.reload());
                 } else {
                     throw new Error(data.error || "Error al validar firma");
                 }
             } catch (err) {
-                alert("Error: " + err.message);
-                statusAlert.style.display = 'block';
-                statusAlert.style.background = 'rgba(244, 67, 54, 0.1)';
-                statusAlert.style.borderLeftColor = '#f44336';
-                statusText.innerText = "❌ " + err.message;
-                statusText.style.color = '#f44336';
+                console.error("Error upload:", err);
+                Swal.fire('Error', err.message, 'error');
             } finally {
-                btnValidate.innerHTML = '<i class="fas fa-check-circle"></i> VALIDAR FIRMA';
+                btnValidate.innerHTML = 'Validar y Activar';
                 btnValidate.disabled = false;
             }
         };
     }
 
-    // --- LÓGICA DE LOGO ---
+    // --- LOGO PREVIEW ---
     const logoPreview = document.getElementById('logoPreview');
     const logoFile = document.getElementById('logoFile');
 
-    logoPreview.onclick = () => logoFile.click();
+    if (logoPreview) {
+        logoPreview.onclick = () => logoFile.click();
+        logoFile.onchange = (e) => {
+            if (e.target.files.length > 0) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    logoPreview.innerHTML = `<img src="${event.target.result}" alt="Preview">`;
+                };
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        };
+    }
 
-    logoFile.onchange = (e) => {
-        if (e.target.files.length > 0) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                logoPreview.innerHTML = `<img src="${event.target.result}" style="width: 100%; height: 100%; object-fit: contain;">`;
-            };
-            reader.readAsDataURL(e.target.files[0]);
-        }
-    };
-
-    // 🏢 GUARDAR CONFIGURACIÓN MAESTRA
-    const masterForm = document.getElementById('masterConfigForm');
-    masterForm.onsubmit = async (e) => {
-        e.preventDefault();
-        console.log("💾 Iniciando guardado de configuración...");
-        
-        const btn = document.getElementById('btnSaveMaster');
+    // --- GUARDAR CONFIGURACIÓN MAESTRA ---
+    async function submitMasterForm() {
+        const masterForm = document.getElementById('masterConfigForm');
+        const btn = document.querySelector('.btn-primary');
         const originalText = btn.innerHTML;
+        
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
         btn.disabled = true;
 
         try {
             const formData = new FormData(masterForm);
             
-            // 🛠️ REFUERZO MANUAL (Garantiza que estos valores vayan sí o sí)
-            const est = document.getElementById('id_codigo_establecimiento').value;
-            const pto = document.getElementById('id_codigo_punto_emision').value;
-            formData.set('codigo_establecimiento', est);
-            formData.set('codigo_punto_emision', pto);
-            
-            console.log("📤 Enviando datos:", Object.fromEntries(formData));
+            // Asegurar que el logo vaya si se cambió
+            if (logoFile.files[0]) {
+                formData.set('logo', logoFile.files[0]);
+            }
 
-            const response = await fetch('/companies/{{ company.id }}/update_master_config/', {
+            const response = await fetch('/api/companies/{{ company.id }}/update_master_config/', {
                 method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
+                headers: { 'X-CSRFToken': '{{ csrf_token }}' },
                 body: formData
             });
 
-            const result = await response.json();
-            console.log("📥 Respuesta del servidor:", result);
+            // Intentar parsear como JSON, si falla es error de servidor real
+            let result;
+            const text = await response.text();
+            try {
+                result = JSON.parse(text);
+            } catch (e) {
+                console.error("Server response not JSON:", text);
+                throw new Error("Respuesta del servidor no es válida (posible error de red)");
+            }
 
             if (response.ok) {
-                if (typeof Swal !== 'undefined') {
-                    Swal.fire({
-                        icon: 'success',
-                        title: '¡Éxito!',
-                        text: 'Configuración actualizada correctamente',
-                        timer: 2000,
-                        showConfirmButton: false
-                    }).then(() => location.reload());
-                } else {
-                    alert("¡Éxito! Configuración actualizada correctamente");
-                    location.reload();
-                }
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Éxito!',
+                    text: 'Configuración actualizada correctamente',
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => location.reload());
             } else {
-                throw new Error(result.error || 'Error desconocido');
+                throw new Error(result.error || result.message || 'Error desconocido al guardar');
             }
         } catch (error) {
-            console.error("❌ Error en guardado:", error);
-            if (typeof Swal !== 'undefined') {
-                Swal.fire('Error', error.message, 'error');
-            } else {
-                alert("Error: " + error.message);
-            }
+            console.error("Submit error:", error);
+            Swal.fire('Error de Guardado', error.message, 'error');
         } finally {
             btn.innerHTML = originalText;
             btn.disabled = false;
         }
-    };
+    }
 
+    // --- AMBIENTE Y ELIMINACIÓN ---
     async function updateEnvironment(newEnv) {
         try {
             const response = await fetch('/api/certificates/update_environment/', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
                 body: JSON.stringify({ environment: newEnv })
             });
-
             if (response.ok) {
-                alert("✅ Ambiente actualizado a: " + newEnv);
+                Swal.fire('Éxito', 'Ambiente actualizado a ' + newEnv, 'success');
             } else {
                 const data = await response.json();
-                alert("❌ Error: " + (data.error || "No se pudo actualizar el ambiente"));
-                window.location.reload(); // Revertir UI
+                Swal.fire('Error', data.error || 'No se pudo actualizar', 'error');
             }
         } catch (err) {
-            alert("❌ Error de conexión: " + err.message);
+            Swal.fire('Error', 'No se pudo conectar con el servidor', 'error');
         }
     }
 
     async function deleteCertificate() {
-        if (!confirm("¿Estás seguro de que deseas eliminar la firma actual? Esta acción no se puede deshacer.")) return;
+        const result = await Swal.fire({
+            title: '¿Eliminar Firma?',
+            text: "Esta acción desactivará la facturación hasta que subas una nueva.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#f44336',
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar'
+        });
 
-        try {
-            const response = await fetch('/api/certificates/delete_active/', {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}'
+        if (result.isConfirmed) {
+            try {
+                const response = await fetch('/api/certificates/delete_active/', {
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+                });
+                if (response.ok) {
+                    Swal.fire('Eliminado', 'La firma ha sido removida.', 'success').then(() => location.reload());
+                } else {
+                    const data = await response.json();
+                    throw new Error(data.error || "Error al eliminar");
                 }
-            });
-
-            if (response.ok) {
-                alert("✅ Firma eliminada exitosamente.");
-                window.location.reload();
-            } else {
-                const data = await response.json();
-                alert("❌ Error: " + (data.error || "No se pudo eliminar la firma"));
+            } catch (err) {
+                Swal.fire('Error', err.message, 'error');
             }
-        } catch (err) {
-            alert("❌ Error de conexión: " + err.message);
         }
     }
-    async function syncFromCertificate() {
-        if (!confirm("¿Deseas sincronizar el RUC y Nombre de la Empresa con los datos de tu firma digital activa?")) return;
-        
-        try {
-            const response = await fetch('/api/companies/{{ company.id }}/sync_from_certificate/', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}'
-                }
-            });
 
-            if (response.ok) {
-                alert("✅ Datos sincronizados correctamente. La página se recargará.");
-                window.location.reload();
-            } else {
+    async function syncFromCertificate() {
+        const result = await Swal.fire({
+            title: '¿Sincronizar con Firma?',
+            text: "Se actualizará la Razón Social y el RUC con los datos reales de tu certificado digital.",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sincronizar Ahora'
+        });
+
+        if (result.isConfirmed) {
+            Swal.fire({ title: 'Sincronizando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+            
+            try {
+                const response = await fetch('/api/companies/{{ company.id }}/sync_from_certificate/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+                });
+                
                 const data = await response.json();
-                alert("❌ Error: " + (data.error || "No se pudo sincronizar"));
+                if (response.ok) {
+                    Swal.fire({ icon: 'success', title: 'Sincronizado', text: data.message, timer: 1500, showConfirmButton: false }).then(() => location.reload());
+                } else {
+                    Swal.fire('Error', data.error || 'No se pudo sincronizar', 'error');
+                }
+            } catch (err) {
+                console.error("Sync error:", err);
+                Swal.fire('Error de Conexión', 'No se pudo sincronizar los datos. Verifica tu internet o contacta soporte.', 'error');
             }
-        } catch (err) {
-            alert("❌ Error de conexión: " + err.message);
         }
     }
 </script>

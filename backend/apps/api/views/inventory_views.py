@@ -8,6 +8,7 @@ from django.utils import timezone
 from decimal import Decimal
 
 from apps.inventory.models import Provider, PurchaseInvoice, PurchaseItem, ProductStock, StockMovement
+from apps.inventory.services import InventoryService
 from apps.invoicing.models import ProductTemplate
 from apps.companies.models import Company
 
@@ -120,73 +121,32 @@ class PurchaseViewSet(viewsets.ViewSet):
 
         try:
             with transaction.atomic():
-                purchase = PurchaseInvoice.objects.create(
-                    company=company,
-                    provider=provider,
-                    invoice_number=data.get('invoice_number'),
-                    issue_date=data.get('issue_date'),
-                    notes=data.get('notes', ''),
-                    total_amount=0,
-                    created_by=request.user
-                )
-
-                total_purchase = Decimal('0')
+                # Adaptar items del API al formato del servicio
+                processed_items = []
                 for item in items:
+                    p_item = {
+                        'quantity': item.get('quantity', 0),
+                        'cost_inclusive': item.get('cost', 0),
+                        'tax_rate': 15.00 # Default para API
+                    }
+                    
                     if item.get('is_new'):
                         product_data = item.get('new_product_data', {})
-                        product = ProductTemplate.objects.create(
-                            company=company,
-                            main_code=product_data.get('main_code', f"PROD-{timezone.now().timestamp()}"),
-                            name=product_data.get('name'),
-                            description=product_data.get('name'),
-                            unit_price=Decimal(str(product_data.get('unit_price', 0))),
-                            tax_rate=Decimal(str(product_data.get('tax_rate', 15))),
-                            tax_code='2',
-                            created_by=request.user
-                        )
+                        p_item['product_name'] = product_data.get('name')
                     else:
-                        product = get_object_or_404(ProductTemplate, id=item['product_id'], company=company)
+                        p_item['product_id'] = item.get('product_id')
                     
-                    qty = Decimal(str(item['quantity']))
-                    cost = Decimal(str(item['cost']))
-                    subtotal = qty * cost
-                    total_purchase += subtotal
+                    processed_items.append(p_item)
 
-                    PurchaseItem.objects.create(
-                        purchase_invoice=purchase,
-                        product=product,
-                        quantity=qty,
-                        cost_price=cost,
-                        subtotal=subtotal,
-                        created_by=request.user
-                    )
-
-                    stock, created = ProductStock.objects.get_or_create(
-                        company=company,
-                        product=product,
-                        defaults={'quantity': 0}
-                    )
-                    
-                    previous_qty = stock.quantity
-                    stock.quantity += qty
-                    stock.last_purchase_price = cost
-                    stock.save()
-
-                    StockMovement.objects.create(
-                        company=company,
-                        product=product,
-                        movement_type='IN',
-                        quantity=qty,
-                        previous_stock=previous_qty,
-                        new_stock=stock.quantity,
-                        reference=purchase.invoice_number,
-                        notes=f"Compra registrada: {purchase.invoice_number}",
-                        created_by=request.user
-                    )
-
-                purchase.total_amount = total_purchase
-                purchase.is_processed = True
-                purchase.save()
+                invoice_data = {
+                    'invoice_number': data.get('invoice_number'),
+                    'issue_date': data.get('issue_date'),
+                    'notes': data.get('notes', '')
+                }
+                
+                purchase = InventoryService.process_purchase(
+                    company, provider, invoice_data, processed_items, request.user
+                )
 
             return Response({'id': purchase.id, 'total': str(purchase.total_amount)}, status=201)
         except Exception as e:

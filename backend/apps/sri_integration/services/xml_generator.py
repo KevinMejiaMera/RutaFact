@@ -109,56 +109,35 @@ class XMLGeneratorSRI2025:
             raise
     
     def generate_invoice_xml(self):
-        """Genera XML para factura comercial normal v1.1.0"""
+        """Genera XML para factura comercial normal v1.1.0 con auto-corrección de totales e IVA"""
         try:
             logger.info(f"Generando XML Factura v{self.XML_VERSIONS['factura']} para ID {self.document.id}")
             
-            # Elemento raíz con versión CORRECTA
-            factura = Element('factura', {
-                'id': 'comprobante',
-                'version': self.XML_VERSIONS['factura']
-            })
-            
-            # Información tributaria
-            info_tributaria = self._create_info_tributaria('01')  # 01 = Factura
-            factura.append(info_tributaria)
-            
-            # Información de la factura
-            info_factura = self._create_info_factura()
-            factura.append(info_factura)
-            
-            # Detalles
-            detalles = SubElement(factura, 'detalles')
-            
-            # 1. Obtener ítems desde relación o desde additional_data (POS)
+            # 1. Recolectar ítems primero (relación o POS)
             items_to_process = []
             if hasattr(self.document, 'items') and self.document.items.exists():
                 items_to_process = list(self.document.items.all())
             elif isinstance(self.document.additional_data, dict) and 'pos_items' in self.document.additional_data:
-                # Convertir dicts de POS a objetos "fake" para el generador
                 from types import SimpleNamespace
                 for item_dict in self.document.additional_data['pos_items']:
                     from apps.invoicing.models import ProductTemplate
-                    prod_name = "Producto"
+                    prod_name = item_dict.get('name', 'Producto')
                     tax_rate = 15.0
                     try:
-                        # Prioridad 1: Valor enviado desde el POS (validando que sea numérico)
                         pos_tax = item_dict.get('tax_rate')
                         if pos_tax is not None:
                             try:
                                 tax_rate = float(pos_tax)
-                            except (ValueError, TypeError):
-                                # Si falla (ej. era la ruta de la imagen por el bug anterior), buscar en BD
+                            except:
                                 p = ProductTemplate.objects.get(id=item_dict['id'])
                                 tax_rate = float(p.tax_rate)
                                 prod_name = p.name
                         else:
-                            # Prioridad 2: Buscar en la base de datos
                             p = ProductTemplate.objects.get(id=item_dict['id'])
                             prod_name = p.name
                             tax_rate = float(p.tax_rate)
-                    except Exception as e:
-                        logger.warning(f"Error recuperando datos para item POS {item_dict.get('id')}: {e}")
+                    except:
+                        pass
 
                     fake_item = SimpleNamespace(
                         main_code=str(item_dict.get('id', 'PROD001')),
@@ -166,12 +145,89 @@ class XMLGeneratorSRI2025:
                         quantity=Decimal(str(item_dict.get('quantity', 1))),
                         unit_price=Decimal(str(item_dict.get('price', 0))),
                         discount=Decimal(str(item_dict.get('discount', 0))),
-                        subtotal=Decimal(str(item_dict.get('quantity', 1))) * Decimal(str(item_dict.get('price', 0))),
                         tax_rate=tax_rate,
                         additional_details={}
                     )
                     items_to_process.append(fake_item)
+            
+            # 2. AUTO-CORRECCIÓN Y RECALCULO DE TOTALES (Diferencias fix)
+            # SRI requiere que el encabezado coincida exactamente con la suma de detalles.
+            # También migramos IVA 12% -> 15% si la fecha es de 2024-04-01 en adelante.
+            current_subtotal = Decimal('0')
+            current_tax = Decimal('0')
+            current_discount = Decimal('0')
+            
+            # Verificar si debemos forzar 15% (Ecuador Ley Abril 2024)
+            force_15 = False
+            if self.document.issue_date:
+                threshold_date = datetime.strptime('2024-04-01', '%Y-%m-%d').date()
+                if self.document.issue_date >= threshold_date:
+                    force_15 = True
 
+            for item in items_to_process:
+                # Migración de IVA si aplica
+                if force_15 and getattr(item, 'tax_rate', 0) == 12.0:
+                    logger.info(f"Auto-migrando item {getattr(item, 'main_code', '')} de 12% a 15% IVA")
+                    item.tax_rate = 15.0
+                
+                # Recalcular subtotal de la línea
+                qty = Decimal(str(getattr(item, 'quantity', 0)))
+                price = Decimal(str(getattr(item, 'unit_price', 0)))
+                disc = Decimal(str(getattr(item, 'discount', 0)))
+                
+                line_subtotal = (qty * price) - disc
+                item.subtotal = line_subtotal # Asegurar que el objeto tiene el subtotal correcto
+                
+                current_subtotal += line_subtotal
+                current_discount += disc
+                
+                # Calcular impuesto de la línea
+                rate = Decimal(str(getattr(item, 'tax_rate', 15.0)))
+                if rate > 0:
+                    current_tax += (line_subtotal * (rate / 100))
+
+            # Actualizar el documento en memoria para que info_factura use los valores correctos
+            self.document.subtotal_without_tax = current_subtotal.quantize(Decimal('0.01'))
+            self.document.total_tax = current_tax.quantize(Decimal('0.01'))
+            self.document.total_discount = current_discount.quantize(Decimal('0.01'))
+            self.document.total_amount = (self.document.subtotal_without_tax + self.document.total_tax).quantize(Decimal('0.01'))
+            
+            logger.info(f"Totales recalculados: Subtotal={self.document.subtotal_without_tax}, Tax={self.document.total_tax}, Total={self.document.total_amount}")
+
+            # Construir resumen de impuestos correcto a partir de los items ya migrados
+            # Esto evita que _get_taxes_summary() use registros DB con codigoPorcentaje viejo (ej: 12%->2)
+            self._recalculated_taxes_summary = {}
+            for item in items_to_process:
+                rate = float(getattr(item, 'tax_rate', 15))
+                pcode = self._get_iva_percentage_code(rate)
+                key = ('2', pcode)
+                subtotal = float(getattr(item, 'subtotal', 0))
+                if key not in self._recalculated_taxes_summary:
+                    self._recalculated_taxes_summary[key] = {
+                        'base': Decimal('0'),
+                        'valor': Decimal('0'),
+                        'codigo': '2',
+                        'codigoPorcentaje': pcode,
+                        'tarifa': Decimal(str(rate)),
+                        'descuentoAdicional': Decimal('0')
+                    }
+                self._recalculated_taxes_summary[key]['base'] += Decimal(str(subtotal))
+                self._recalculated_taxes_summary[key]['valor'] += Decimal(str(round(subtotal * rate / 100, 2)))
+            logger.info(f"Resumen de impuestos recalculado: {list(self._recalculated_taxes_summary.keys())}")
+
+            # 3. Construir XML con los datos corregidos
+            factura = Element('factura', {
+                'id': 'comprobante',
+                'version': self.XML_VERSIONS['factura']
+            })
+            
+            info_tributaria = self._create_info_tributaria('01')
+            factura.append(info_tributaria)
+            
+            info_factura = self._create_info_factura()
+            factura.append(info_factura)
+            
+            detalles = SubElement(factura, 'detalles')
             if items_to_process:
                 for item in items_to_process:
                     detalle = self._create_detalle_factura(item)
@@ -742,12 +798,22 @@ class XMLGeneratorSRI2025:
         return detalle
     
     def _create_tax_detail(self, tax, item):
-        """Crea detalle de impuesto"""
+        """Crea detalle de impuesto corrigiendo posibles códigos erróneos de la base de datos"""
         impuesto = Element('impuesto')
         
+        # Obtener tarifa y forzar 15% si es necesario (migración)
+        rate = float(getattr(tax, 'rate', getattr(item, 'tax_rate', 15)))
+        if hasattr(self.document, 'issue_date') and self.document.issue_date:
+            threshold_date = datetime.strptime('2024-04-01', '%Y-%m-%d').date()
+            if self.document.issue_date >= threshold_date and rate == 12.0:
+                rate = 15.0
+                
+        # Forzar el código de porcentaje correcto basado en la tarifa
+        p_code = self._get_iva_percentage_code(rate)
+        
         SubElement(impuesto, 'codigo').text = str(getattr(tax, 'tax_code', '2'))
-        SubElement(impuesto, 'codigoPorcentaje').text = str(getattr(tax, 'percentage_code', '4'))
-        SubElement(impuesto, 'tarifa').text = self._format_decimal(getattr(tax, 'rate', 15))
+        SubElement(impuesto, 'codigoPorcentaje').text = p_code
+        SubElement(impuesto, 'tarifa').text = self._format_decimal(rate)
         SubElement(impuesto, 'baseImponible').text = self._format_decimal(
             getattr(tax, 'taxable_base', getattr(item, 'subtotal', 0))
         )
@@ -760,6 +826,12 @@ class XMLGeneratorSRI2025:
         impuesto = Element('impuesto')
         
         rate = float(getattr(item, 'tax_rate', 15))
+        # Si la factura es después de Abril 2024 y el rate es 12, forzar 15%
+        if hasattr(self.document, 'issue_date') and self.document.issue_date:
+            threshold_date = datetime.strptime('2024-04-01', '%Y-%m-%d').date()
+            if self.document.issue_date >= threshold_date and rate == 12.0:
+                rate = 15.0
+
         percentage_code = self._get_iva_percentage_code(rate)
         
         SubElement(impuesto, 'codigo').text = '2'  # IVA
@@ -856,6 +928,10 @@ class XMLGeneratorSRI2025:
     
     def _get_taxes_summary(self):
         """Resumen de impuestos"""
+        if hasattr(self, '_recalculated_taxes_summary') and self._recalculated_taxes_summary:
+            logger.info("Using recalculated taxes summary for XML generation")
+            return self._recalculated_taxes_summary
+
         taxes_summary = {}
         
         if hasattr(self.document, 'taxes') and self.document.taxes.exists():

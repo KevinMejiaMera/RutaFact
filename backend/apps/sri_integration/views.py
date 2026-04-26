@@ -209,16 +209,35 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                         subtotal=subtotal
                     )
                     
-                    # Calcular impuesto (IVA 15% por defecto)
-                    tax_rate = Decimal("15.00")
+                    # Buscar producto para obtener su IVA
+                    from apps.invoicing.models import ProductTemplate
+                    product = ProductTemplate.objects.filter(company=company, main_code=item_data["main_code"]).first()
+                    if product:
+                        tax_rate = Decimal(str(product.tax_rate))
+                    else:
+                        tax_rate = Decimal("15.00")
+                        
+                    # Calcular impuesto
                     tax_amount = fix_decimal_places(subtotal * tax_rate / 100, 2)
+                    
+                    # Mapear tarifa a código SRI
+                    if tax_rate == Decimal('0.00'):
+                        p_code = '0'
+                    elif tax_rate == Decimal('12.00'):
+                        p_code = '2'
+                    elif tax_rate == Decimal('15.00'):
+                        p_code = '4'
+                    elif tax_rate == Decimal('5.00'):
+                        p_code = '5'
+                    else:
+                        p_code = '4'
                     
                     # Crear impuesto
                     DocumentTax.objects.create(
                         document=document,
                         item=item,
                         tax_code="2",  # IVA
-                        percentage_code="2",  # 15%
+                        percentage_code=p_code,
                         rate=tax_rate,
                         taxable_base=subtotal,
                         tax_amount=tax_amount

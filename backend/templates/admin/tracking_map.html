@@ -9,14 +9,15 @@
     .tracking-layout {
         display: grid;
         grid-template-columns: 350px 1fr;
-        gap: 25px;
+        gap: 30px;
         height: calc(100vh - 160px);
+        animation: fadeIn 0.6s cubic-bezier(0.165, 0.84, 0.44, 1);
     }
     
     /* Listado Lateral */
     .routes-sidebar {
         background: var(--bg-card);
-        border-radius: 24px;
+        border-radius: var(--radius);
         border: 1px solid var(--border);
         overflow: hidden;
         display: flex;
@@ -24,9 +25,9 @@
     }
     
     .sidebar-header {
-        padding: 25px;
+        padding: 30px;
         border-bottom: 1px solid var(--border);
-        background: rgba(255,255,255,0.02);
+        background: rgba(255,255,255,0.01);
     }
     
     .route-list {
@@ -35,7 +36,7 @@
     }
     
     .route-item {
-        padding: 20px;
+        padding: 25px;
         border-bottom: 1px solid var(--border);
         cursor: pointer;
         transition: 0.3s;
@@ -43,11 +44,11 @@
     }
     
     .route-item:hover {
-        background: rgba(108, 99, 255, 0.05);
+        background: rgba(255,255,255,0.02);
     }
     
     .route-item.active {
-        background: rgba(108, 99, 255, 0.1);
+        background: var(--primary-light);
         border-left-color: var(--primary);
     }
     
@@ -55,20 +56,20 @@
     .details-container {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 25px;
         overflow-y: auto;
     }
 
     .info-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 20px;
+        gap: 25px;
     }
 
     .detail-card {
         background: var(--bg-card);
-        border-radius: 24px;
-        padding: 25px;
+        border-radius: var(--radius);
+        padding: 30px;
         border: 1px solid var(--border);
         position: relative;
         overflow: hidden;
@@ -76,50 +77,51 @@
 
     .detail-card h4 {
         color: var(--text-dim);
-        font-size: 13px;
+        font-size: 11px;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 15px;
+        letter-spacing: 1.5px;
+        margin-bottom: 20px;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
+        font-weight: 700;
     }
 
     .coord-box {
-        background: rgba(0,0,0,0.2);
-        padding: 15px;
-        border-radius: 15px;
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 14px;
+        background: rgba(0,0,0,0.3);
+        padding: 18px;
+        border-radius: 16px;
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+        font-size: 13px;
         color: var(--primary);
-        margin-bottom: 15px;
-        border: 1px dashed rgba(108, 99, 255, 0.3);
+        margin-bottom: 20px;
+        border: 1px dashed rgba(176, 139, 144, 0.2);
     }
 
     .btn-google {
         display: inline-flex;
         align-items: center;
-        gap: 10px;
-        background: white;
-        color: #1a1a1a;
-        padding: 10px 20px;
+        gap: 12px;
+        background: var(--text-main);
+        color: var(--bg-dark);
+        padding: 12px 24px;
         border-radius: 12px;
         text-decoration: none;
-        font-weight: 600;
+        font-weight: 700;
         font-size: 13px;
         transition: 0.3s;
     }
 
     .btn-google:hover {
-        background: #f0f0f0;
         transform: translateY(-2px);
+        opacity: 0.9;
     }
 
     .map-box {
         flex: 1;
-        min-height: 400px;
+        min-height: 450px;
         background: var(--bg-card);
-        border-radius: 24px;
+        border-radius: var(--radius);
         border: 1px solid var(--border);
         overflow: hidden;
         position: relative;
@@ -128,7 +130,7 @@
     #map {
         width: 100%;
         height: 100%;
-        background: #0b0b1a;
+        background: #000;
     }
 
     .stats-row {
@@ -138,16 +140,26 @@
     }
 
     .stat-mini {
-        background: rgba(255,255,255,0.03);
-        padding: 10px 15px;
-        border-radius: 12px;
-        font-size: 12px;
+        background: rgba(255,255,255,0.02);
+        padding: 12px 20px;
+        border-radius: 15px;
+        font-size: 11px;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border: 1px solid var(--border);
     }
 
     .stat-mini strong {
-        color: white;
+        color: var(--text-main);
         display: block;
-        font-size: 16px;
+        font-size: 18px;
+        margin-top: 5px;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 </style>
 {% endblock %}

@@ -15,43 +15,58 @@ from django.utils.deprecation import MiddlewareMixin
 logger = logging.getLogger(__name__)
 
 
+def _user_has_company_access(user, company_id=None):
+    """
+    Función auxiliar centralizada: verifica si un usuario tiene acceso a una empresa.
+    Soporta el sistema de empresa única (FK directo user.company_id) y el sistema
+    M2M (UserCompanyAssignment) para compatibilidad.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    
+    # ✅ Soporte para VirtualCompanyUser (Tokens VSR)
+    if hasattr(user, '__class__') and 'Virtual' in user.__class__.__name__:
+        if company_id:
+            try:
+                return int(company_id) == user.company.id
+            except:
+                return False
+        return True
+
+    # Obtener todas las empresas a las que el usuario tiene acceso
+    from apps.api.user_company_helper import get_user_companies_exact
+    accessible_companies = get_user_companies_exact(user)
+    
+    if not accessible_companies.exists():
+        return False
+
+    # Si se pide una empresa específica, verificar que esté entre las accesibles
+    if company_id is not None:
+        try:
+            return accessible_companies.filter(id=int(company_id)).exists()
+        except (ValueError, TypeError):
+            return False
+
+    # Si no se pide específica, solo verificar que tenga al menos una
+    return True
+
+
 class IsCompanyOwnerOrAdmin(permissions.BasePermission):
     """
-    Permiso que permite acceso solo a propietarios de empresa o administradores
-    MEJORADO: Con mejor logging y validación + soporte para VirtualCompanyUser
+    Permiso que permite acceso solo a propietarios de empresa o administradores.
+    Soporta sistema de empresa única (sin relación M2M).
     """
     
     def has_permission(self, request, view):
-        """
-        Verifica permisos a nivel de vista
-        """
-        # Los usuarios deben estar autenticados
         if not request.user or not request.user.is_authenticated:
             logger.warning("Access denied: User not authenticated")
             return False
-        
-        # Los superusuarios tienen acceso total
-        if request.user.is_superuser:
-            logger.info(f"Superuser {request.user.username} granted access")
-            return True
-        
-        # ✅ NUEVO: Soporte para VirtualCompanyUser (tokens VSR)
-        if hasattr(request.user, '__class__') and 'Virtual' in request.user.__class__.__name__:
-            logger.info(f"VirtualCompanyUser {getattr(request.user, 'username', 'VSR')} granted access")
-            return True
-        
-        # Los usuarios regulares deben tener al menos una empresa
-        if hasattr(request.user, 'companies'):
-            has_companies = request.user.companies.filter(is_active=True).exists()
-            if not has_companies:
-                logger.warning(f"User {request.user.username} has no active companies")
-                return False
-            
-            logger.info(f"User {request.user.username} has active companies")
-            return True
-        else:
-            logger.warning(f"User {getattr(request.user, 'username', 'Unknown')} has no companies attribute")
-            return False
+        result = _user_has_company_access(request.user)
+        if not result:
+            logger.warning(f"Access denied for user {getattr(request.user, 'username', 'Unknown')}")
+        return result
     
     def has_object_permission(self, request, view, obj):
         """
@@ -216,42 +231,8 @@ class IsCompanyMember(permissions.BasePermission):
         return None
     
     def _validate_company_access(self, user, company_id):
-        """
-        Valida acceso del usuario a la empresa
-        """
-        try:
-            company_id = int(company_id)
-            
-            # Superuser tiene acceso total
-            if user.is_superuser:
-                return True
-            
-            # ✅ NUEVO: VirtualCompanyUser siempre tiene acceso
-            if hasattr(user, '__class__') and 'Virtual' in user.__class__.__name__:
-                return True
-            
-            # Verificar relación usuario-empresa
-            if hasattr(user, 'companies'):
-                from apps.companies.models import Company
-                try:
-                    company = Company.objects.get(id=company_id, is_active=True)
-                    has_access = company in user.companies.filter(is_active=True)
-                    
-                    if not has_access:
-                        logger.warning(f"User {user.username} denied access to company {company_id}")
-                    
-                    return has_access
-                    
-                except Company.DoesNotExist:
-                    logger.error(f"Company {company_id} does not exist")
-                    return False
-            else:
-                logger.warning(f"User {getattr(user, 'username', 'Unknown')} has no companies attribute")
-                return False
-                
-        except (ValueError, TypeError):
-            logger.error(f"Invalid company_id format: {company_id}")
-            return False
+        """Valida acceso del usuario a la empresa usando sistema de empresa única."""
+        return _user_has_company_access(user, company_id)
 
 
 # ========== NUEVOS PERMISOS ESPECÍFICOS PARA SRI ==========
@@ -302,28 +283,8 @@ class SRIDocumentPermission(permissions.BasePermission):
             return False
     
     def _validate_company_access(self, user, company_id):
-        """Misma validación que IsCompanyMember"""
-        try:
-            company_id = int(company_id)
-            
-            if user.is_superuser:
-                return True
-            
-            # ✅ NUEVO: VirtualCompanyUser siempre tiene acceso
-            if hasattr(user, '__class__') and 'Virtual' in user.__class__.__name__:
-                return True
-            
-            if hasattr(user, 'companies'):
-                from apps.companies.models import Company
-                try:
-                    company = Company.objects.get(id=company_id, is_active=True)
-                    return company in user.companies.filter(is_active=True)
-                except Company.DoesNotExist:
-                    return False
-            else:
-                return False
-        except (ValueError, TypeError):
-            return False
+        """Valida acceso del usuario a la empresa usando sistema de empresa única."""
+        return _user_has_company_access(user, company_id)
 
 
 class CertificatePermission(permissions.BasePermission):
@@ -430,49 +391,14 @@ def require_admin_access(func):
 
 def _validate_user_company_access_with_logging(user, company_id):
     """
-    Validación con logging detallado - CORREGIDO PARA VSR
+    Validación con logging detallado. Usa sistema de empresa única.
     """
-    if not user or not user.is_authenticated:
-        logger.warning("Access denied: User not authenticated")
-        return False
-    
-    try:
-        company_id = int(company_id)
-        
-        # Superuser tiene acceso completo
-        if user.is_superuser:
-            logger.info(f"Superuser {getattr(user, 'username', 'Admin')} accessing company {company_id}")
-            return True
-        
-        # ✅ NUEVO: VirtualCompanyUser siempre tiene acceso
-        if hasattr(user, '__class__') and 'Virtual' in user.__class__.__name__:
-            logger.info(f"VirtualCompanyUser accessing company {company_id}")
-            return True
-        
-        # Validar relación usuario-empresa
-        if hasattr(user, 'companies'):
-            from apps.companies.models import Company
-            try:
-                company = Company.objects.get(id=company_id, is_active=True)
-                has_access = company in user.companies.filter(is_active=True)
-                
-                if has_access:
-                    logger.info(f"User {user.username} granted access to company {company_id}")
-                else:
-                    logger.warning(f"User {user.username} denied access to company {company_id}")
-                
-                return has_access
-                
-            except Company.DoesNotExist:
-                logger.error(f"Company {company_id} does not exist")
-                return False
-        
-        logger.warning(f"User {getattr(user, 'username', 'Unknown')} has no company relationships")
-        return False
-        
-    except (ValueError, TypeError):
-        logger.error(f"Invalid company_id format: {company_id}")
-        return False
+    result = _user_has_company_access(user, company_id)
+    if result:
+        logger.info(f"✅ Acceso concedido a empresa {company_id} para {getattr(user, 'username', 'Unknown')}")
+    else:
+        logger.warning(f"❌ Acceso denegado a empresa {company_id} para {getattr(user, 'username', 'Unknown')}")
+    return result
 
 
 def get_user_accessible_companies(user):

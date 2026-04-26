@@ -11,20 +11,33 @@ logger = logging.getLogger(__name__)
 
 def get_user_companies_exact(user):
     """
-    LÓGICA SIMPLIFICADA: Siempre devuelve la empresa matriz única.
+    LÓGICA MEJORADA: Devuelve las empresas asignadas al usuario via UserCompanyAssignment
+    o via relación directa user.company.
     """
     if not user or not user.is_authenticated:
         return Company.objects.none()
     
-    # Si es Superusuario o usuario normal, todos trabajan sobre la misma matriz
-    # Buscamos la primera empresa activa (la única que debería existir)
-    matriz = Company.objects.filter(is_active=True).first()
+    # 1. Superusuarios tienen acceso a todas las empresas activas
+    if user.is_superuser:
+        return Company.objects.filter(is_active=True)
     
-    if matriz:
-        logger.info(f"✅ Sistema Matriz: Usuario {user.username} operando en {matriz.business_name}")
-        return Company.objects.filter(id=matriz.id)
+    # 2. Verificar UserCompanyAssignment (Sistema de Sala de Espera)
+    try:
+        from apps.users.models import UserCompanyAssignment
+        assignment = UserCompanyAssignment.objects.filter(user=user, status='assigned').first()
+        if assignment:
+            return assignment.get_assigned_companies().filter(is_active=True)
+    except Exception as e:
+        logger.error(f"Error checking UserCompanyAssignment for {user.username}: {e}")
     
-    logger.warning("⚠️ No se encontró ninguna empresa matriz activa en el sistema")
+    # 3. Fallback: Relación directa User.company
+    if hasattr(user, 'company') and user.company and user.company.is_active:
+        return Company.objects.filter(id=user.company.id)
+    
+    # 4. Último fallback: Buscar la primera empresa activa solo si el sistema es de empresa única
+    # pero esto puede causar el error "bloqueado" si el usuario no tiene relación explícita.
+    # Por ahora, si no tiene nada explícito, devolvemos vacío para forzar asignación.
+    logger.warning(f"⚠️ Usuario {user.username} no tiene empresas asignadas explícitamente")
     return Company.objects.none()
 
 

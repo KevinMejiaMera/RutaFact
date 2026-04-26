@@ -32,6 +32,7 @@ class CompanySerializer(serializers.ModelSerializer):
             'secuencial_factura',
             'secuencial_nota_credito',
             'secuencial_retencion',
+            'codigo_establecimiento',
             'codigo_punto_emision',
             'ambiente_sri',
             'tipo_emision',

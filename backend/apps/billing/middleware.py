@@ -173,6 +173,16 @@ class BillingLimitMiddleware(MiddlewareMixin):
                         return company
                     else:
                         logger.warning(f"❌ BILLING: User {request.user.username} denied access to company {company_id}")
+                        # FALLBACK: Para sistema de empresa única, intentar con la primera empresa activa
+                        # si el company_id solicitado coincide con la empresa activa del sistema
+                        try:
+                            from apps.companies.models import Company
+                            system_company = Company.objects.filter(is_active=True).first()
+                            if system_company and str(system_company.id) == str(company_id):
+                                logger.info(f"✅ BILLING: Fallback - Using active system company: {system_company.business_name}")
+                                return system_company
+                        except Exception as fallback_err:
+                            logger.error(f"❌ BILLING: Fallback company lookup failed: {fallback_err}")
 
                 # MÉTODO 3: Primera empresa del usuario si no hay company_id
                 user_companies = get_user_companies_exact(request.user)

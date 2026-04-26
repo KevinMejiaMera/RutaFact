@@ -174,8 +174,8 @@ class TrackingViewSet(viewsets.ViewSet):
                                     'route_id': route.id,
                                     'points': [
                                         {
-                                            'lat': float(p.latitude),
-                                            'lng': float(p.longitude),
+                                            'latitude': float(p.latitude),
+                                            'longitude': float(p.longitude),
                                             'timestamp': p.timestamp.isoformat()
                                         } for p in points_to_create
                                     ]

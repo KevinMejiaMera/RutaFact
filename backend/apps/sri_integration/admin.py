@@ -6,7 +6,7 @@ from django.http import HttpResponse, Http404
 import os
 from .models import (
     SRIConfiguration, ElectronicDocument, DocumentItem,
-    DocumentTax, SRIResponse
+    DocumentTax, SRIResponse, CreditNote
 )
 
 @admin.register(SRIConfiguration)
@@ -268,3 +268,20 @@ class SRIResponseAdmin(admin.ModelAdmin):
             return format_html('<span style="color: green;">✅ Éxito</span>')
         return format_html('<span style="color: red;">❌ Error</span>')
     success_colored.short_description = '✅ Estado'
+
+@admin.register(CreditNote)
+class CreditNoteAdmin(admin.ModelAdmin):
+    list_display = (
+        'document_number', 'company', 'original_document', 'customer_name',
+        'total_amount', 'status', 'issue_date'
+    )
+    list_filter = ('status', 'issue_date', 'company')
+    search_fields = (
+        'document_number', 'customer_name', 'customer_identification',
+        'access_key', 'original_document__document_number'
+    )
+    readonly_fields = (
+        'access_key', 'xml_file', 'signed_xml_file', 'pdf_file',
+        'sri_authorization_code', 'sri_authorization_date',
+        'created_at', 'updated_at'
+    )
