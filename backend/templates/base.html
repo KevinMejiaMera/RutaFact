@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RutaFact | Dashboard Matriz</title>
-    <link rel="icon" type="image/png" href="https://rutafact.com/favicon.png">
+    <link rel="icon" type="image/png" href="{% static 'img/logo.png' %}">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -367,6 +367,9 @@
             </li>
             <li class="nav-item">
                 <a href="/dashboard/invoices/" class="nav-link {% if request.path == '/dashboard/invoices/' %}active{% endif %}"><i class="fas fa-file-invoice"></i> Comprobantes</a>
+            </li>
+            <li class="nav-item">
+                <a href="/dashboard/reports/" class="nav-link {% if request.path == '/dashboard/reports/' %}active{% endif %}"><i class="fas fa-chart-bar"></i> Reportes</a>
             </li>
             <li class="nav-item">
                 <a href="/dashboard/users/" class="nav-link {% if request.path == '/dashboard/users/' %}active{% endif %}"><i class="fas fa-users"></i> Usuarios / Roles</a>

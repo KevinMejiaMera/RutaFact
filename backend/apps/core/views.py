@@ -1206,3 +1206,55 @@ def admin_retry_invoice(request, pk):
         messages.success(request, f"Reintento de envío programado para la factura {invoice.document_number}")
     
     return redirect('admin_invoices')
+
+@login_required
+@user_passes_test(is_admin)
+def admin_reports_view(request):
+    """Vista para reportes de ventas filtrados por fechas y vendedores."""
+    from datetime import datetime
+    from django.db import models
+    from decimal import Decimal
+    
+    companies = get_user_companies_secure(request.user)
+    if not companies.exists():
+        messages.error(request, "No tienes una empresa asignada.")
+        return redirect('home')
+    company = companies.first()
+    
+    # Base query
+    invoices = ElectronicDocument.objects.filter(
+        company=company,
+        document_type='INVOICE',
+        status__in=['AUTHORIZED', 'DRAFT', 'PENDING']
+    ).order_by('-issue_date', '-created_at')
+    
+    # Get filters
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    seller_id = request.GET.get('seller_id')
+    
+    if start_date:
+        invoices = invoices.filter(issue_date__gte=start_date)
+    if end_date:
+        invoices = invoices.filter(issue_date__lte=end_date)
+    if seller_id:
+        invoices = invoices.filter(created_by_id=seller_id)
+        
+    # Totals
+    total_sales = invoices.count()
+    total_revenue = invoices.aggregate(models.Sum('total_amount'))['total_amount__sum'] or Decimal('0')
+    
+    # Sellers for filter dropdown
+    sellers = User.objects.filter(company=company, is_active=True).order_by('first_name')
+    
+    context = {
+        'invoices': invoices,
+        'total_sales': total_sales,
+        'total_revenue': total_revenue,
+        'sellers': sellers,
+        'current_start': start_date,
+        'current_end': end_date,
+        'current_seller': int(seller_id) if seller_id else None
+    }
+    
+    return render(request, 'admin/reports.html', context)
