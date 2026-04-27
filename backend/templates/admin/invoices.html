@@ -150,6 +150,48 @@
     .invoice-table th { text-align: left; padding: 18px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
     .invoice-table td { padding: 18px; border-bottom: 1px solid var(--border); color: var(--text-main); font-size: 13px; }
     .invoice-table tr:hover { background: rgba(255,255,255,0.01); }
+
+    .btn-download-pdf {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 12px;
+        height: 34px;
+        gap: 8px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 82, 82, 0.25);
+        background: rgba(255, 82, 82, 0.06);
+        color: #ff5252;
+        cursor: pointer;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        text-decoration: none;
+        font-size: 12px;
+        font-weight: 600;
+        position: relative;
+    }
+    .btn-download-pdf:hover {
+        background: rgba(255, 82, 82, 0.15);
+        border-color: rgba(255, 82, 82, 0.5);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(255, 82, 82, 0.2);
+    }
+    .btn-download-pdf.loading {
+        pointer-events: none;
+        opacity: 0.7;
+    }
+    .btn-download-pdf .spinner {
+        display: none;
+        width: 12px;
+        height: 12px;
+        border: 2px solid rgba(255, 82, 82, 0.3);
+        border-top-color: #ff5252;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+    }
+    .btn-download-pdf.loading .pdf-icon,
+    .btn-download-pdf.loading .btn-text { display: none; }
+    .btn-download-pdf.loading .spinner { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 {% endblock %}
 
@@ -209,18 +251,25 @@
                                 <td style="text-align: right;">
                                     <div style="display: flex; gap: 8px; justify-content: flex-end;">
                                         <button class="action-btn" onclick="showInvoiceDetails({{ invoice.id }})" title="Ver Detalles"><i class="fas fa-eye"></i></button>
-                                        {% if invoice.pdf_file %}
-                                        <a href="{{ invoice.pdf_file.url }}" class="action-btn" title="Descargar PDF" target="_blank">
-                                            <i class="fas fa-file-pdf" style="color: #ff5252;"></i>
-                                        </a>
-                                        {% endif %}
+
+                                        {# Botón PDF — siempre visible, genera el PDF en el momento si no existe #}
+                                        <button
+                                            class="btn-download-pdf"
+                                            id="pdf-btn-{{ invoice.id }}"
+                                            onclick="downloadPdf({{ invoice.id }}, this)"
+                                            title="Descargar PDF RIDE">
+                                            <i class="fas fa-file-pdf pdf-icon"></i>
+                                            <span class="btn-text">Descargar</span>
+                                            <span class="spinner"></span>
+                                        </button>
+
                                         {% if invoice.signed_xml_file %}
                                         <a href="{{ invoice.signed_xml_file.url }}" class="action-btn" title="Descargar XML" target="_blank">
                                             <i class="fas fa-file-code" style="color: var(--primary);"></i>
                                         </a>
                                         {% endif %}
                                         {% if invoice.status == 'AUTHORIZED' %}
-                                        <a href="{% url 'admin_annul_invoice' invoice.id %}" class="action-btn" title="Anular Factura (Nota Crédito)" 
+                                        <a href="{% url 'admin_annul_invoice' invoice.id %}" class="action-btn" title="Anular Factura (Nota Crédito)"
                                            onclick="return confirm('¿Estás seguro de que deseas anular esta factura? Se generará una Nota de Crédito automáticamente.')"
                                            style="color: #ff8a80;">
                                             <i class="fas fa-ban"></i>
@@ -426,6 +475,62 @@
 
     function closeModal() {
         document.getElementById('invoiceDetailModal').style.display = 'none';
+    }
+
+    /**
+     * Descarga el PDF de un comprobante.
+     * Si el PDF no existe en el servidor, el backend lo genera automáticamente.
+     * Muestra un spinner mientras el servidor procesa la solicitud.
+     */
+    async function downloadPdf(documentId, btn) {
+        // Mostrar estado de carga
+        btn.classList.add('loading');
+        btn.title = 'Generando PDF...';
+
+        try {
+            const response = await fetch(`/sri/documents/${documentId}/download/pdf/`, {
+                method: 'GET',
+                credentials: 'same-origin',
+            });
+
+            if (!response.ok) {
+                // Intentar leer mensaje de error del JSON
+                let errMsg = 'No se pudo descargar el PDF.';
+                try {
+                    const errData = await response.json();
+                    errMsg = errData.message || errMsg;
+                } catch (_) {}
+                alert('Error: ' + errMsg);
+                return;
+            }
+
+            // Obtener el nombre de archivo del header Content-Disposition si está disponible
+            const disposition = response.headers.get('Content-Disposition');
+            let filename = `comprobante_${documentId}.pdf`;
+            if (disposition) {
+                const match = disposition.match(/filename="?([^"]+)"?/);
+                if (match) filename = match[1];
+            }
+
+            // Crear un enlace temporal para forzar la descarga
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+        } catch (error) {
+            console.error('Error al descargar PDF:', error);
+            alert('Error de conexión al descargar el PDF. Inténtalo de nuevo.');
+        } finally {
+            // Restaurar botón
+            btn.classList.remove('loading');
+            btn.title = 'Descargar PDF RIDE';
+        }
     }
 
     // Cerrar modal al hacer click fuera

@@ -8,13 +8,16 @@ import io
 import os
 import qrcode
 import tempfile
+from decimal import Decimal
 from datetime import datetime
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm, inch
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, KeepTogether
 from reportlab.platypus.flowables import HRFlowable
+from reportlab.graphics.barcode import code128, createBarcodeDrawing
+from reportlab.graphics.shapes import Drawing
 from django.conf import settings
 from django.core.files.base import ContentFile
 
@@ -67,22 +70,42 @@ class PDFGenerator:
             spaceAfter=6
         ))
         
-        # Estilo para datos de empresa
+        # Estilo para datos de empresa (negrita pequeña)
         self.styles.add(ParagraphStyle(
-            name='CompanyData',
+            name='CompanyDataBold',
             parent=self.styles['Normal'],
-            fontSize=10,
+            fontSize=8,
             textColor=colors.black,
-            alignment=0,  # Izquierda
-            spaceAfter=3
+            alignment=0,
+            fontName='Helvetica-Bold'
         ))
-        
+
+        # Estilo para datos de etiquetas (izq)
+        self.styles.add(ParagraphStyle(
+            name='LabelStyle',
+            parent=self.styles['Normal'],
+            fontSize=8,
+            textColor=colors.black,
+            alignment=0,
+            fontName='Helvetica-Bold'
+        ))
+
+        # Estilo para datos de valores (der)
+        self.styles.add(ParagraphStyle(
+            name='ValueStyle',
+            parent=self.styles['Normal'],
+            fontSize=8,
+            textColor=colors.black,
+            alignment=0,
+            fontName='Helvetica'
+        ))
+
         # Estilo para encabezados de tabla
         self.styles.add(ParagraphStyle(
             name='TableHeader',
             parent=self.styles['Normal'],
-            fontSize=9,
-            textColor=colors.white,
+            fontSize=7,
+            textColor=colors.black,
             alignment=1,
             fontName='Helvetica-Bold'
         ))
@@ -91,19 +114,29 @@ class PDFGenerator:
         self.styles.add(ParagraphStyle(
             name='TableCell',
             parent=self.styles['Normal'],
+            fontSize=7,
+            textColor=colors.black,
+            alignment=0,
+            fontName='Helvetica'
+        ))
+
+        # Estilo para totales (tabla derecha)
+        self.styles.add(ParagraphStyle(
+            name='TotalLabel',
+            parent=self.styles['Normal'],
             fontSize=8,
             textColor=colors.black,
-            alignment=0
-        ))
-        
-        # Estilo para totales
-        self.styles.add(ParagraphStyle(
-            name='TotalStyle',
-            parent=self.styles['Normal'],
-            fontSize=10,
-            textColor=colors.black,
-            alignment=2,  # Derecha
+            alignment=0,
             fontName='Helvetica-Bold'
+        ))
+
+        self.styles.add(ParagraphStyle(
+            name='TotalValue',
+            parent=self.styles['Normal'],
+            fontSize=8,
+            textColor=colors.black,
+            alignment=2,
+            fontName='Helvetica'
         ))
     
     def generate_invoice_pdf(self, document=None, auth_response=None):
@@ -301,136 +334,155 @@ class PDFGenerator:
     
     def _build_header(self):
         """
-        Construye el encabezado del documento con Logo a la izquierda
+        Construye el encabezado del documento siguiendo el formato SRI (RIDE)
         """
         elements = []
+        
+        # --- COLUMNA IZQUIERDA: LOGO Y DATOS EMPRESA ---
         left_column = []
         
-        # Logo y Datos de la empresa
-        branding_elements = [
-            Paragraph(self.company.business_name, self.styles['CompanyTitle']),
-            Paragraph(f"<b>RUC:</b> {self.company.ruc}", self.styles['CompanyData']),
-            Paragraph(f"<b>Dirección:</b> {self.company.address}", self.styles['CompanyData']),
-            Paragraph(f"<b>Teléfono:</b> {self.company.phone}", self.styles['CompanyData']) if self.company.phone else "",
-            Paragraph(f"<b>Email:</b> {self.company.email}", self.styles['CompanyData']),
-        ]
-        
-        # Intentar agregar logo si existe
+        # 1. Logo
+        logo_added = False
         if self.company.logo:
             try:
-                from reportlab.platypus import Image as RLImage
                 import io
+                from reportlab.platypus import Image as RLImage
                 
-                # Detectar si estamos en almacenamiento local o remoto (S3)
                 try:
-                    # En local o si el storage lo soporta
                     logo_file = self.company.logo.path
                 except (NotImplementedError, AttributeError):
-                    # Para S3/Producción (DynamicMediaStorage): leer a memoria
                     logo_content = self.company.logo.read()
                     logo_file = io.BytesIO(logo_content)
                 
                 logo_img = RLImage(logo_file)
-                
-                # Calcular proporciones (logo optimizado para encabezado lateral)
                 aspect = logo_img.imageHeight / float(logo_img.imageWidth)
-                logo_width = 30 * mm
+                logo_width = 45 * mm
                 logo_height = logo_width * aspect
                 
-                if logo_height > 25 * mm:
-                    logo_height = 25 * mm
+                if logo_height > 35 * mm:
+                    logo_height = 35 * mm
                     logo_width = logo_height / aspect
                 
                 logo_img.drawHeight = logo_height
                 logo_img.drawWidth = logo_width
-                
-                # Tabla anidada para Logo | Datos
-                branding_data = [[logo_img, branding_elements]]
-                branding_table = Table(branding_data, colWidths=[35*mm, 55*mm])
-                branding_table.setStyle(TableStyle([
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                    ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                    ('RIGHTPADDING', (0, 0), (-1, -1), 5),
-                ]))
-                left_column.append(branding_table)
+                left_column.append(logo_img)
+                left_column.append(Spacer(1, 2*mm))
+                logo_added = True
             except Exception as e:
                 logger.error(f"Error loading company logo for PDF: {str(e)}")
-                left_column.extend(branding_elements)
-        else:
-            left_column.extend(branding_elements)
-        
-        # Tabla principal del encabezado
-        header_data = [
-            [
-                left_column,
-                [
-                    Paragraph(f"<b>{self.document.get_document_type_display().upper()}</b>", self.styles['CompanyTitle']),
-                    Paragraph(f"<b>No:</b> {self.document.document_number}", self.styles['CompanyData']),
-                    Paragraph(f"<b>Fecha:</b> {self.document.issue_date.strftime('%d/%m/%Y')}", self.styles['CompanyData']),
-                    Paragraph(f"<b>Ambiente:</b> {self.sri_config.get_environment_display()}", self.styles['CompanyData']),
-                ]
-            ]
+
+        if not logo_added:
+             left_column.append(Spacer(1, 20*mm)) # Espacio si no hay logo
+
+        # 2. Box de datos de la empresa (Matriz, Sucursal, Obligado)
+        company_box_data = [
+            [Paragraph(self.company.business_name.upper(), self.styles['CompanyTitle'])],
+            [Paragraph(f"<b>Dirección Matriz:</b> {self.company.address.upper()}", self.styles['ValueStyle'])],
         ]
         
-        header_table = Table(header_data, colWidths=[3.5*inch, 2.5*inch])
-        header_table.setStyle(TableStyle([
+        # Si hay dirección sucursal (usamos la misma si no hay campo específico, o podemos buscar en settings)
+        company_box_data.append([Paragraph(f"<b>Dirección Sucursal:</b> {self.company.address.upper()}", self.styles['ValueStyle'])])
+        
+        if self.sri_config.special_taxpayer:
+             company_box_data.append([Paragraph(f"<b>Contribuyente Especial Nro:</b> {self.sri_config.special_taxpayer_number}", self.styles['ValueStyle'])])
+        
+        company_box_data.append([Paragraph(f"<b>OBLIGADO A LLEVAR CONTABILIDAD:</b> {'SÍ' if self.sri_config.accounting_required else 'NO'}", self.styles['ValueStyle'])])
+        
+        # Régimen si aplica
+        if hasattr(self.sri_config, 'regimen') and self.sri_config.regimen != 'GENERAL':
+            regimen_text = self.sri_config.get_regimen_display().upper()
+            company_box_data.append([Paragraph(f"<b>CONTRIBUYENTE RÉGIMEN {regimen_text}</b>", self.styles['ValueStyle'])])
+
+        company_box_table = Table(company_box_data, colWidths=[85*mm])
+        company_box_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        left_column.append(company_box_table)
+
+        # --- COLUMNA DERECHA: DATOS DEL COMPROBANTE ---
+        right_column = []
+        
+        # Info Box (RUC, Factura, Autorización, etc)
+        doc_info_data = [
+            [Paragraph(f"<b>R.U.C.:</b> {self.company.ruc}", self.styles['CompanyTitle'])],
+            [Paragraph(self.document.get_document_type_display().upper(), self.styles['CompanyTitle'])],
+            [Paragraph(f"No. {self.document.document_number}", self.styles['ValueStyle'])],
+            [Paragraph("NÚMERO DE AUTORIZACIÓN", self.styles['LabelStyle'])],
+            [Paragraph(self.document.sri_authorization_code or "PENDIENTE", self.styles['ValueStyle'])],
+            [Paragraph(f"<b>FECHA Y HORA DE AUTORIZACIÓN:</b> {self.document.sri_authorization_date.strftime('%d/%m/%Y %H:%M:%S') if self.document.sri_authorization_date else 'PENDIENTE'}", self.styles['ValueStyle'])],
+            [Paragraph(f"<b>AMBIENTE:</b> {self.sri_config.get_environment_display().upper()}", self.styles['ValueStyle'])],
+            [Paragraph(f"<b>EMISIÓN:</b> NORMAL", self.styles['ValueStyle'])],
+            [Paragraph("CLAVE DE ACCESO", self.styles['LabelStyle'])],
+        ]
+        
+        # Barcode Drawing
+        try:
+            # Usar createBarcodeDrawing para mejor compatibilidad y escalado automático
+            barcode_drawing = createBarcodeDrawing('Code128', value=self.document.access_key, 
+                                                   barHeight=10*mm, width=80*mm, humanReadable=False)
+            doc_info_data.append([barcode_drawing])
+        except Exception as e:
+            logger.error(f"Error generating barcode: {str(e)}")
+            doc_info_data.append([Paragraph("Error al generar código de barras", self.styles['ValueStyle'])])
+        
+        doc_info_data.append([Paragraph(self.document.access_key, self.styles['ValueStyle'])])
+
+        doc_info_table = Table(doc_info_data, colWidths=[85*mm])
+        doc_info_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+            ('ALIGN', (0, 9), (0, 9), 'CENTER'), # Barcode align
+            ('ALIGN', (0, 10), (0, 10), 'CENTER'), # Access key text align
+        ]))
+        right_column.append(doc_info_table)
+
+        # Unir ambas columnas
+        header_master_data = [[left_column, right_column]]
+        header_master_table = Table(header_master_data, colWidths=[90*mm, 90*mm])
+        header_master_table.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
-            ('BOX', (0, 0), (-1, -1), 1, colors.black),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
         ]))
         
-        elements.append(header_table)
-        elements.append(Spacer(1, 10*mm))
-        
-        return elements
-    
-    def _build_invoice_info(self):
-        """
-        Construye la información de la factura
-        """
-        elements = []
-        info_data = []
-        
-        if self.sri_config.special_taxpayer and self.sri_config.special_taxpayer_number:
-            info_data.append(f"CONTRIBUYENTE ESPECIAL No: {self.sri_config.special_taxpayer_number}")
-        
-        info_data.append(f"OBLIGADO A LLEVAR CONTABILIDAD: {'SÍ' if self.sri_config.accounting_required else 'NO'}")
-        
-        for info in info_data:
-            elements.append(Paragraph(info, self.styles['CompanyData']))
-        
+        elements.append(header_master_table)
         elements.append(Spacer(1, 5*mm))
+        
         return elements
+
+    def _build_invoice_info(self):
+        """Ya incluido en _build_header"""
+        return []
     
     def _build_customer_info(self):
         """
-        Construye la información del cliente
+        Construye la información del cliente siguiendo el formato SRI
         """
         elements = []
-        elements.append(Paragraph("DATOS DEL CLIENTE", self.styles['SectionTitle']))
         
         customer_data = [
-            ["Razón Social:", self.document.customer_name],
-            ["Identificación:", f"{self.document.customer_identification} ({self.document.get_customer_identification_type_display()})"],
+            [Paragraph(f"<b>Razón Social / Nombres y Apellidos:</b> {self.document.customer_name.upper()}", self.styles['ValueStyle']), ""],
+            [Paragraph(f"<b>Identificación:</b> {self.document.customer_identification}", self.styles['ValueStyle']), 
+             Paragraph(f"<b>Guía:</b> {getattr(self.document, 'remission_guide_number', '') or ''}", self.styles['ValueStyle'])],
+            [Paragraph(f"<b>Fecha:</b> {self.document.issue_date.strftime('%d/%m/%Y')}", self.styles['ValueStyle']), 
+             Paragraph(f"<b>Dirección:</b> {self.document.customer_address.upper() if self.document.customer_address else ''}", self.styles['ValueStyle'])],
         ]
         
-        if self.document.customer_address:
-            customer_data.append(["Dirección:", self.document.customer_address])
-        if self.document.customer_phone:
-            customer_data.append(["Teléfono:", self.document.customer_phone])
-        if self.document.customer_email:
-            customer_data.append(["Email:", self.document.customer_email])
-        
-        customer_table = Table(customer_data, colWidths=[1.5*inch, 4*inch])
+        customer_table = Table(customer_data, colWidths=[100*mm, 80*mm])
         customer_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 3),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('SPAN', (0, 0), (1, 0)), # Razón social ocupa toda la fila
         ]))
         
         elements.append(customer_table)
@@ -439,143 +491,207 @@ class PDFGenerator:
     
     def _build_invoice_details(self):
         """
-        Construye la tabla de detalles de la factura
+        Construye la tabla de detalles siguiendo el formato SRI (RIDE)
         """
         elements = []
-        elements.append(Paragraph("DETALLE", self.styles['SectionTitle']))
         
-        headers = ["Código", "Descripción", "Cant.", "P. Unit.", "Desc.", "Subtotal"]
-        table_data = [headers]
-        
-        for item in self.document.items.all():
-            row = [
-                item.main_code,
-                item.description,
-                f"{item.quantity:.2f}",
-                f"${item.unit_price:.2f}",
-                f"${item.discount:.2f}",
-                f"${item.subtotal:.2f}"
-            ]
-            table_data.append(row)
-        
-        details_table = Table(table_data, colWidths=[1*inch, 2.5*inch, 0.7*inch, 0.8*inch, 0.7*inch, 0.8*inch])
-        
-        table_style = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
-            ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        # Cabeceras exactas del SRI
+        headers = [
+            Paragraph("<b>Cod. Principal</b>", self.styles['TableHeader']),
+            Paragraph("<b>Cod. Auxiliar</b>", self.styles['TableHeader']),
+            Paragraph("<b>Cant</b>", self.styles['TableHeader']),
+            Paragraph("<b>Descripción</b>", self.styles['TableHeader']),
+            Paragraph("<b>Detalle Adicional</b>", self.styles['TableHeader']),
+            Paragraph("<b>Precio Unitario</b>", self.styles['TableHeader']),
+            Paragraph("<b>Subsidio</b>", self.styles['TableHeader']),
+            Paragraph("<b>Precio sin Subsidio</b>", self.styles['TableHeader']),
+            Paragraph("<b>Descuento</b>", self.styles['TableHeader']),
+            Paragraph("<b>Precio Total</b>", self.styles['TableHeader']),
         ]
         
-        details_table.setStyle(TableStyle(table_style))
+        table_data = [headers]
+        
+        # Obtener items de la relación directa
+        items = list(self.document.items.all())
+        
+        # Si no hay items en la relación, buscar en additional_data (pos_items)
+        if not items and self.document.additional_data and 'pos_items' in self.document.additional_data:
+            pos_items = self.document.additional_data['pos_items']
+            if isinstance(pos_items, list):
+                for pi in pos_items:
+                    # Mapear campos del JSON a lo esperado por el PDF
+                    row = [
+                        Paragraph(str(pi.get('main_code', pi.get('id', ''))), self.styles['TableCell']),
+                        Paragraph(str(pi.get('auxiliary_code', '')), self.styles['TableCell']),
+                        Paragraph(f"{float(pi.get('quantity', 1)):.2f}", self.styles['TableCell']),
+                        Paragraph(str(pi.get('description', pi.get('name', ''))), self.styles['TableCell']),
+                        Paragraph("", self.styles['TableCell']),
+                        Paragraph(f"{float(pi.get('unit_price', pi.get('price', 0))):.2f}", self.styles['TableCell']),
+                        Paragraph("0.00", self.styles['TableCell']),
+                        Paragraph("0.00", self.styles['TableCell']),
+                        Paragraph(f"{float(pi.get('discount', 0)):.2f}", self.styles['TableCell']),
+                        Paragraph(f"{float(pi.get('subtotal', pi.get('total_price', 0))):.2f}", self.styles['TableCell']),
+                    ]
+                    table_data.append(row)
+        else:
+            # Usar items de la relación normal
+            for item in items:
+                add_info = ""
+                if item.additional_details:
+                    add_info = ", ".join([f"{v}" for k, v in item.additional_details.items()])
+                
+                row = [
+                    Paragraph(item.main_code, self.styles['TableCell']),
+                    Paragraph(item.auxiliary_code or "", self.styles['TableCell']),
+                    Paragraph(f"{item.quantity:.2f}", self.styles['TableCell']),
+                    Paragraph(item.description, self.styles['TableCell']),
+                    Paragraph(add_info, self.styles['TableCell']),
+                    Paragraph(f"{item.unit_price:.2f}", self.styles['TableCell']),
+                    Paragraph("0.00", self.styles['TableCell']),
+                    Paragraph("0.00", self.styles['TableCell']),
+                    Paragraph(f"{item.discount:.2f}", self.styles['TableCell']),
+                    Paragraph(f"{item.subtotal:.2f}", self.styles['TableCell']),
+                ]
+                table_data.append(row)
+        
+        # Si sigue vacío, añadir una fila vacía para mantener la estructura
+        if len(table_data) == 1:
+            table_data.append([Paragraph("", self.styles['TableCell'])] * 10)
+
+        # Anchos de columna optimizados (Total ~180mm)
+        col_widths = [18*mm, 18*mm, 12*mm, 42*mm, 20*mm, 15*mm, 13*mm, 15*mm, 13*mm, 14*mm]
+        
+        details_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        details_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'), # Header align
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ]))
+        
         elements.append(details_table)
         elements.append(Spacer(1, 5*mm))
         return elements
     
     def _build_invoice_totals(self):
         """
-        Construye la sección de totales
+        Construye la sección inferior con info adicional y totales
         """
         elements = []
+        
+        # --- LADO IZQUIERDO: INFO ADICIONAL Y FORMA DE PAGO ---
+        left_side = []
+        
+        # 1. Info Adicional
+        if self.document.additional_data:
+            add_data = [[Paragraph("Información Adicional", self.styles['LabelStyle'])]]
+            for key, value in self.document.additional_data.items():
+                # OMITIR pos_items de la visualización de info adicional ya que se muestra en la tabla
+                if key == 'pos_items':
+                    continue
+                add_data.append([Paragraph(f"<b>{key}:</b> {value}", self.styles['ValueStyle'])])
+            
+            if len(add_data) > 1: # Solo si hay algo más que el título
+                add_table = Table(add_data, colWidths=[90*mm])
+                add_table.setStyle(TableStyle([
+                    ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+                    ('TOPPADDING', (0, 0), (-1, -1), 2),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ]))
+                left_side.append(add_table)
+                left_side.append(Spacer(1, 5*mm))
+
+        # 2. Forma de Pago
+        # Buscamos en additional_data o usamos uno por defecto
+        payment_method = "Sin utilización del sistema financiero"
+        if self.document.additional_data and 'Forma de Pago' in self.document.additional_data:
+             payment_method = self.document.additional_data['Forma de Pago']
+        
+        payment_data = [
+            [Paragraph("Forma de Pago", self.styles['LabelStyle']), Paragraph("Valor", self.styles['LabelStyle'])],
+            [Paragraph(payment_method, self.styles['ValueStyle']), Paragraph(f"{self.document.total_amount:.2f}", self.styles['ValueStyle'])]
+        ]
+        payment_table = Table(payment_data, colWidths=[65*mm, 25*mm])
+        payment_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ]))
+        left_side.append(payment_table)
+
+        # --- LADO DERECHO: TOTALES ---
+        right_side = []
+        
+        # Calcular subtotales por tarifa
+        subtotal_0 = Decimal('0.00')
+        subtotal_15 = Decimal('0.00')
+        subtotal_no_objeto = Decimal('0.00')
+        subtotal_exento = Decimal('0.00')
+        iva_15 = Decimal('0.00')
+        
+        for tax in self.document.taxes.all():
+            if tax.tax_code == '2': # IVA
+                if tax.percentage_code == '0':
+                    subtotal_0 += tax.taxable_base
+                elif tax.percentage_code == '4': # 15%
+                    subtotal_15 += tax.taxable_base
+                    iva_15 += tax.tax_amount
+                elif tax.percentage_code == '6':
+                    subtotal_no_objeto += tax.taxable_base
+                elif tax.percentage_code == '7':
+                    subtotal_exento += tax.taxable_base
+        
+        # Si no hay impuestos (ej. borrador), usar subtotal general
+        if not self.document.taxes.exists():
+            subtotal_15 = self.document.subtotal_without_tax
+
         totals_data = [
-            ["SUBTOTAL SIN IMPUESTOS:", f"${self.document.subtotal_without_tax:.2f}"],
-            ["DESCUENTO:", f"${self.document.total_discount:.2f}"],
+            [Paragraph("SUBTOTAL 15%", self.styles['TotalLabel']), Paragraph(f"{subtotal_15:.2f}", self.styles['TotalValue'])],
+            [Paragraph("SUBTOTAL 0%", self.styles['TotalLabel']), Paragraph(f"{subtotal_0:.2f}", self.styles['TotalValue'])],
+            [Paragraph("SUBTOTAL NO OBJETO DE IVA", self.styles['TotalLabel']), Paragraph(f"{subtotal_no_objeto:.2f}", self.styles['TotalValue'])],
+            [Paragraph("SUBTOTAL EXENTO DE IVA", self.styles['TotalLabel']), Paragraph(f"{subtotal_exento:.2f}", self.styles['TotalValue'])],
+            [Paragraph("SUBTOTAL SIN IMPUESTOS", self.styles['TotalLabel']), Paragraph(f"{self.document.subtotal_without_tax:.2f}", self.styles['TotalValue'])],
+            [Paragraph("TOTAL DESCUENTO", self.styles['TotalLabel']), Paragraph(f"{self.document.total_discount:.2f}", self.styles['TotalValue'])],
+            [Paragraph("ICE", self.styles['TotalLabel']), Paragraph("0.00", self.styles['TotalValue'])],
+            [Paragraph("IRBPNR", self.styles['TotalLabel']), Paragraph("0.00", self.styles['TotalValue'])],
+            [Paragraph("IVA 15%", self.styles['TotalLabel']), Paragraph(f"{iva_15:.2f}", self.styles['TotalValue'])],
+            [Paragraph("PROPINA", self.styles['TotalLabel']), Paragraph("0.00", self.styles['TotalValue'])],
+            [Paragraph("VALOR TOTAL", self.styles['TotalLabel']), Paragraph(f"{self.document.total_amount:.2f}", self.styles['TotalValue'])],
         ]
         
-        taxes_summary = {}
-        for tax in self.document.taxes.all():
-            tax_name = f"{tax.get_tax_code_display()} {tax.rate}%"
-            taxes_summary[tax_name] = taxes_summary.get(tax_name, 0) + tax.tax_amount
-        
-        for tax_name, tax_amount in taxes_summary.items():
-            totals_data.append([f"{tax_name}:", f"${tax_amount:.2f}"])
-        
-        totals_data.append(["TOTAL:", f"${self.document.total_amount:.2f}"])
-        
-        totals_table = Table(totals_data, colWidths=[2*inch, 1*inch])
+        totals_table = Table(totals_data, colWidths=[55*mm, 30*mm])
         totals_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -2), 'Helvetica'),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
-            ('BOX', (0, -1), (-1, -1), 1, colors.black),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('RIGHTPADDING', (1, 0), (1, -1), 5),
+        ]))
+        right_side.append(totals_table)
+
+        # Master Table para unir ambos lados
+        master_data = [[left_side, right_side]]
+        master_table = Table(master_data, colWidths=[95*mm, 85*mm])
+        master_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ]))
         
-        totals_flow = Table([[totals_table]], colWidths=[6.5*inch])
-        totals_flow.setStyle(TableStyle([('ALIGN', (0, 0), (0, 0), 'RIGHT')]))
-        
-        elements.append(totals_flow)
-        elements.append(Spacer(1, 10*mm))
+        elements.append(master_table)
         return elements
     
     def _build_additional_info(self):
-        """
-        Construye información adicional si existe
-        """
-        elements = []
-        if self.document.additional_data:
-            elements.append(Paragraph("INFORMACIÓN ADICIONAL", self.styles['SectionTitle']))
-            for key, value in self.document.additional_data.items():
-                elements.append(Paragraph(f"<b>{key}:</b> {value}", self.styles['Normal']))
-            elements.append(Spacer(1, 5*mm))
-        return elements
+        """Ya incluido en _build_invoice_totals"""
+        return []
     
     def _build_authorization_info(self):
-        """
-        Construye información de autorización del SRI
-        """
-        elements = []
-        elements.append(Paragraph("INFORMACIÓN DE AUTORIZACIÓN", self.styles['SectionTitle']))
-        
-        auth_data = [["CLAVE DE ACCESO:", self.document.access_key]]
-        if self.document.sri_authorization_code:
-            auth_data.extend([
-                ["No. AUTORIZACIÓN:", self.document.sri_authorization_code],
-                ["FECHA AUTORIZACIÓN:", self.document.sri_authorization_date.strftime('%d/%m/%Y %H:%M:%S') if self.document.sri_authorization_date else ""],
-                ["ESTADO:", "AUTORIZADO"],
-            ])
-        else:
-            auth_data.append(["ESTADO:", "PENDIENTE DE AUTORIZACIÓN"])
-        
-        auth_table = Table(auth_data, colWidths=[2*inch, 4*inch])
-        auth_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ]))
-        
-        elements.append(auth_table)
-        elements.append(Spacer(1, 5*mm))
-        return elements
+        """Ya incluido en el box del encabezado"""
+        return []
     
     def _build_footer(self):
-        """
-        Construye el pie de página con código QR
-        """
-        elements = []
-        qr_img = self._generate_qr_code()
-        if qr_img:
-            footer_data = [[
-                qr_img,
-                [
-                    Paragraph("Código QR para verificación", self.styles['Normal']),
-                    Paragraph(f"Clave de Acceso: {self.document.access_key}", self.styles['TableCell']),
-                    Paragraph("Consulte su documento en: www.sri.gob.ec", self.styles['TableCell']),
-                ]
-            ]]
-            footer_table = Table(footer_data, colWidths=[1.5*inch, 4.5*inch])
-            footer_table.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('ALIGN', (0, 0), (0, 0), 'CENTER'),
-            ]))
-            elements.append(footer_table)
-        return elements
+        """Pie de página vacío para coincidir con imagen"""
+        return []
     
     def _generate_qr_code(self):
         """
