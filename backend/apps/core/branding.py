@@ -51,7 +51,7 @@ def get_system_name():
     4. django.contrib.sites
     5. fallback
     """
-    fallback_name = 'Factu Express'
+    fallback_name = 'RutaFact'
 
     preferred_name = get_setting_value(['SYSTEM_NAME', 'SITE_NAME', 'APP_NAME', 'BRAND_NAME'])
     if preferred_name:
@@ -61,8 +61,9 @@ def get_system_name():
         from django.contrib.sites.models import Site
 
         current_site = Site.objects.get_current()
-        if current_site and current_site.name:
+        if current_site and current_site.name and current_site.name != 'example.com':
             return current_site.name.strip()
+
     except Exception:
         pass
 
@@ -78,12 +79,13 @@ def build_page_title(page_title=None):
 
 def get_system_logo_url():
     value = get_setting_value(['SYSTEM_LOGO', 'APP_LOGO', 'BRAND_LOGO'])
-    return resolve_asset_url(value, 'images/favicon.png')
+    return resolve_asset_url(value, 'img/logo.png')
 
 
 def get_system_favicon_url():
     value = get_setting_value(['SYSTEM_FAVICON', 'APP_FAVICON', 'BRAND_FAVICON'])
-    return resolve_asset_url(value, 'images/favicon.png')
+    return resolve_asset_url(value, 'img/logo.png')
+
 
 
 def get_seo_settings():

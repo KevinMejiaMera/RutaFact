@@ -600,6 +600,7 @@ class ElectronicDocument(BaseModel):
     
     STATUS_CHOICES = [
         ('DRAFT', _('Draft')),
+        ('PENDING', _('Pending')),
         ('GENERATED', _('Generated')),
         ('SIGNED', _('Signed')),
         ('SENT', _('Sent to SRI')),
@@ -1278,6 +1279,7 @@ class CreditNote(BaseModel):
     
     STATUS_CHOICES = [
         ('DRAFT', _('Draft')),
+        ('PENDING', _('Pending')),
         ('GENERATED', _('Generated')),
         ('SIGNED', _('Signed')),
         ('SENT', _('Sent to SRI')),

@@ -319,3 +319,28 @@ def token_register(request):
             'can_track': user.can_track
         }
     }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def branding_info(request):
+    """
+    Endpoint público para obtener información de branding del sistema
+    """
+    from apps.core.branding import get_system_name, get_system_logo_url, get_system_favicon_url
+    
+    logo_url = get_system_logo_url()
+    favicon_url = get_system_favicon_url()
+    
+    # Asegurar URLs absolutas para clientes móviles
+    if logo_url.startswith('/'):
+        logo_url = request.build_absolute_uri(logo_url)
+    if favicon_url.startswith('/'):
+        favicon_url = request.build_absolute_uri(favicon_url)
+        
+    return Response({
+        'name': get_system_name(),
+        'logo_url': logo_url,
+        'favicon_url': favicon_url,
+    })
+

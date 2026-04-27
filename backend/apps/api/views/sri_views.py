@@ -979,6 +979,60 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             'recent_documents': recent_data
         })
     
+    @action(detail=False, methods=['get'])
+    @require_user_company_access()
+    @audit_api_action(action_type='REPORTS_STATS')
+    def reports(self, request):
+        """
+        Endpoint de reportes filtrados por fechas y vendedores para la app móvil.
+        """
+        company = request.validated_company
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        seller_id = request.query_params.get('seller_id')
+        
+        # Base query: Solo facturas autorizadas o generadas del vendedor/empresa
+        invoices = ElectronicDocument.objects.filter(
+            company=company,
+            document_type='INVOICE'
+        ).select_related('created_by')
+        
+        # Filtros
+        if start_date:
+            invoices = invoices.filter(issue_date__gte=start_date)
+        if end_date:
+            invoices = invoices.filter(issue_date__lte=end_date)
+        if seller_id:
+            invoices = invoices.filter(created_by_id=seller_id)
+            
+        from django.db.models import Sum, Count
+        stats = invoices.aggregate(
+            total_count=Count('id'),
+            total_revenue=Sum('total_amount')
+        )
+        
+        # Lista de documentos (limitada a los últimos 100 por rendimiento)
+        invoices_list = invoices.order_by('-issue_date', '-created_at')[:100]
+        
+        results = []
+        for inv in invoices_list:
+            results.append({
+                'id': inv.id,
+                'document_number': inv.document_number,
+                'customer_name': inv.customer_name,
+                'total_amount': str(inv.total_amount),
+                'issue_date': inv.issue_date.isoformat() if inv.issue_date else None,
+                'status': inv.status,
+                'seller_name': f"{inv.created_by.first_name} {inv.created_by.last_name}" if inv.created_by else "Sistema",
+                'created_at': inv.created_at.isoformat()
+            })
+            
+        return Response({
+            'total_sales': stats['total_count'] or 0,
+            'total_revenue': str(stats['total_revenue'] or '0.00'),
+            'results': results
+        })
+    
     # ========== NUEVO: ENDPOINT DE VALIDACIÓN PARA TOKEN VSR ==========
     
     @action(detail=False, methods=['post', 'get'])

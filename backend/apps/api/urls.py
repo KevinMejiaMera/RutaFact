@@ -36,7 +36,7 @@ router.register(r'routes', RouteViewSet, basename='route')
 router.register(r'route-stops', RouteStopViewSet, basename='route-stop')
 
 # 🔑🔑🔑 IMPORTAR AUTH VIEWS PARA TOKENS 🔑🔑🔑
-from apps.api.views.auth_views import token_login, token_logout, token_profile, auth_status, token_register
+from apps.api.views.auth_views import token_login, token_logout, token_profile, auth_status, token_register, branding_info
 from apps.api.views.user_views import UserViewSet
 
 
@@ -221,6 +221,11 @@ class ProductViewSet(viewsets.ViewSet):
             
             data = []
             for product in products:
+                # Obtener stock actual para la empresa
+                from apps.inventory.models import ProductStock
+                stock_obj = ProductStock.objects.filter(product=product, company_id=company_id).first()
+                stock_qty = float(stock_obj.quantity) if stock_obj else 0.0
+
                 data.append({
                     'id': product.id,
                     'main_code': product.main_code,
@@ -231,7 +236,8 @@ class ProductViewSet(viewsets.ViewSet):
                     'unit_of_measure': product.unit_of_measure,
                     'tax_code': product.tax_code,
                     'company_id': product.company.id,
-                    'company_name': product.company.business_name
+                    'company_name': product.company.business_name,
+                    'stock': stock_qty
                 })
             
             return Response(data)
@@ -330,6 +336,7 @@ auth_urlpatterns = [
     path('auth/logout/', token_logout, name='token-logout'),
     path('auth/profile/', token_profile, name='token-profile'),
     path('auth/status/', auth_status, name='auth-status'),
+    path('branding/', branding_info, name='branding-info'),
 ]
 
 # ========== URLs ESPECÍFICAS SRI ==========
