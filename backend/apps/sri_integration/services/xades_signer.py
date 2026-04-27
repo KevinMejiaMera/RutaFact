@@ -191,7 +191,12 @@ class XAdesBESSigner:
         # Importante: SRI prefiere el orden EXACTO que viene en el cert, empezando por C=...
         # La mayoría de certs ecuatorianos vienen ordenados de lo más general a lo más específico
         for attr in reversed(list(issuer)):
-            short_name = mapping.get(attr.oid._name, attr.oid._name)
+            # Handle 'Unknown OID' gracefully by using its dotted string (e.g. 2.5.4.97)
+            oid_name = attr.oid.dotted_string if attr.oid._name == 'Unknown OID' else attr.oid._name
+            short_name = mapping.get(oid_name, oid_name)
+            
+            # The SRI parser may reject 2.5.4.97 if it expects OID.2.5.4.97 or just 2.5.4.97
+            # Actually, using the dotted string is the most standard fallback
             parts.append(f"{short_name}={attr.value}")
         
         # Coma SIN espacio es más robusto para validadores JBoss antiguos

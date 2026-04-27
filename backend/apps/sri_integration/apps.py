@@ -7,7 +7,4 @@ class SriIntegrationConfig(AppConfig):
     
     def ready(self):
         """Importar signals cuando la app esté lista"""
-        try:
-            import apps.sri_integration.signals  # noqa F401
-        except ImportError:
-            pass
+        import apps.sri_integration.signals  # noqa F401

@@ -125,10 +125,27 @@ class GlobalCertificateManager:
                 
                 # Verificar si no ha expirado
                 if not cert_data.is_expired():
-                    cert_data.update_usage()
-                    self._stats['cache_hits'] += 1
-                    logger.debug(f"Certificate cache HIT for company {company_id}")
-                    return cert_data
+                    # Verificar si el certificado en la base de datos fue actualizado desde que se cargó
+                    try:
+                        latest_cert = DigitalCertificate.objects.only('updated_at').get(
+                            company_id=company_id, status='ACTIVE'
+                        )
+                        # Make loaded_at timezone aware for comparison
+                        loaded_at_aware = timezone.make_aware(cert_data.loaded_at) if timezone.is_naive(cert_data.loaded_at) else cert_data.loaded_at
+                        if latest_cert.updated_at > loaded_at_aware:
+                            logger.info(f"Certificate for company {company_id} was updated in DB. Reloading cache.")
+                            del self._certificates_cache[company_id]
+                        else:
+                            cert_data.update_usage()
+                            self._stats['cache_hits'] += 1
+                            logger.debug(f"Certificate cache HIT for company {company_id}")
+                            return cert_data
+                    except Exception as e:
+                        logger.warning(f"Error checking certificate updated_at: {e}")
+                        # Fallback to returning cached data if DB check fails
+                        cert_data.update_usage()
+                        self._stats['cache_hits'] += 1
+                        return cert_data
                 else:
                     logger.warning(f"Certificate expired for company {company_id}")
                     del self._certificates_cache[company_id]
