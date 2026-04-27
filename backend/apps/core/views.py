@@ -178,6 +178,48 @@ def admin_users_view(request):
 
 @login_required
 @user_passes_test(is_admin)
+def admin_create_user(request):
+    """Crear un nuevo usuario y asignar rol/empresa directamente"""
+    if request.method == 'POST':
+        import json
+        try:
+            data = json.loads(request.body)
+            email = data.get('email')
+            first_name = data.get('first_name', '')
+            last_name = data.get('last_name', '')
+            password = data.get('password')
+            role = data.get('role', 'client')
+            
+            if not email or not password:
+                return JsonResponse({'status': 'error', 'message': 'Email y contraseña son requeridos'})
+                
+            if User.objects.filter(email=email).exists():
+                return JsonResponse({'status': 'error', 'message': 'El email ya está registrado'})
+                
+            # Crear usuario
+            user = User.objects.create_user(
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                role=role,
+                user_status='active'
+            )
+            
+            # Asignar a la empresa del admin
+            companies = get_user_companies_secure(request.user)
+            company = companies.first()
+            if company:
+                user.company = company
+                user.save()
+                
+            return JsonResponse({'status': 'success', 'message': 'Usuario creado y asignado exitosamente'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
+    return JsonResponse({'status': 'error', 'message': 'Método no permitido'})
+
+@login_required
+@user_passes_test(is_admin)
 def admin_invoices_view(request):
     """Vista para listar todos los comprobantes de la empresa con trazabilidad de usuario"""
     companies = get_user_companies_secure(request.user)
@@ -660,7 +702,20 @@ def admin_pos_view(request):
             items = data.get('items', [])
             payment_method_code = data.get('payment_method', '01') # Default efectivo
             
-            customer = get_object_or_404(Customer, id=customer_id, company=company)
+            if not customer_id:
+                # Find or create Consumidor Final
+                customer, _ = Customer.objects.get_or_create(
+                    company=company,
+                    identification='9999999999999',
+                    defaults={
+                        'name': 'CONSUMIDOR FINAL',
+                        'identification_type': '07',
+                        'email': 'consumidor@final.com',
+                        'address': 'ECUADOR'
+                    }
+                )
+            else:
+                customer = get_object_or_404(Customer, id=customer_id, company=company)
             
             with transaction.atomic():
                 # 1. Obtener o crear configuración SRI para la empresa

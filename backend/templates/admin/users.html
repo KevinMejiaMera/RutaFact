@@ -162,8 +162,8 @@
                 <h3 style="font-size: 18px; color: white;">Listado de Equipo Móvil</h3>
                 <p style="color: var(--text-dim); font-size: 14px; margin-top: 5px;">Gestiona los accesos y roles de tus despachadores</p>
             </div>
-            <button class="btn-primary" onclick="alert('Funcionalidad de invitación en desarrollo')">
-                <i class="fas fa-user-plus"></i> Invitar Usuario
+            <button class="btn-primary" onclick="openCreateUserModal()">
+                <i class="fas fa-user-plus"></i> Crear Usuario
             </button>
         </div>
 
@@ -273,7 +273,98 @@
     </div>
 </div>
 
+<!-- Modal para Crear Usuario -->
+<div id="createUserModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <i class="fas fa-times close-modal" onclick="closeCreateUserModal()"></i>
+        <h2 style="color: white; margin-bottom: 20px;">Crear Usuario</h2>
+        <form id="createUserForm" onsubmit="submitCreateUser(event)">
+            <div class="form-group">
+                <label>Correo Electrónico (Requerido)</label>
+                <input type="email" id="new_email" class="form-control" required placeholder="correo@ejemplo.com">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-group">
+                    <label>Nombre</label>
+                    <input type="text" id="new_first_name" class="form-control" placeholder="Juan">
+                </div>
+                <div class="form-group">
+                    <label>Apellido</label>
+                    <input type="text" id="new_last_name" class="form-control" placeholder="Pérez">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Contraseña (Requerido)</label>
+                <input type="password" id="new_password" class="form-control" required placeholder="******">
+            </div>
+            <div class="form-group">
+                <label>Rol Inicial</label>
+                <select id="new_role" class="form-control" style="background-color: var(--bg-card); appearance: none; -webkit-appearance: none; background-image: url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22white%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><polyline points=%226 9 12 15 18 9%22></polyline></svg>'); background-repeat: no-repeat; background-position: right 15px center; padding-right: 40px;">
+                    <option value="seller">Vendedor</option>
+                    <option value="admin">Administrador</option>
+                    <option value="dispatcher">Despachador</option>
+                    <option value="driver">Transportador</option>
+                    <option value="client">Cliente</option>
+                </select>
+            </div>
+            <div style="margin-top: 25px; text-align: right;">
+                <button type="button" class="btn-primary" style="background: transparent; border: 1px solid var(--border); margin-right: 10px;" onclick="closeCreateUserModal()">Cancelar</button>
+                <button type="submit" class="btn-primary" id="btnSubmitUser">Crear Usuario</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
+    function openCreateUserModal() {
+        document.getElementById('createUserModal').style.display = 'block';
+    }
+
+    function closeCreateUserModal() {
+        document.getElementById('createUserModal').style.display = 'none';
+        document.getElementById('createUserForm').reset();
+    }
+
+    async function submitCreateUser(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnSubmitUser');
+        btn.innerHTML = '<span class="loader" style="width: 20px; height: 20px; border-width: 3px;"></span>';
+        btn.disabled = true;
+
+        const payload = {
+            email: document.getElementById('new_email').value,
+            first_name: document.getElementById('new_first_name').value,
+            last_name: document.getElementById('new_last_name').value,
+            password: document.getElementById('new_password').value,
+            role: document.getElementById('new_role').value
+        };
+
+        try {
+            const response = await fetch('/dashboard/users/create/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                alert(data.message);
+                window.location.reload();
+            } else {
+                alert('Error: ' + data.message);
+                btn.innerHTML = 'Crear Usuario';
+                btn.disabled = false;
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error de conexión');
+            btn.innerHTML = 'Crear Usuario';
+            btn.disabled = false;
+        }
+    }
     async function updateUserRole(userId, newRole, selectElement) {
         try {
             // Mostrar estado de carga (opcional)

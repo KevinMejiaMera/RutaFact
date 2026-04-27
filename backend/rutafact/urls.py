@@ -60,6 +60,7 @@ urlpatterns = [
     path('dashboard/inventory/product/<int:product_id>/delete/', core_views.admin_delete_product, name='admin_delete_product'),
     path('dashboard/inventory/sync-all/', core_views.admin_sync_all_data, name='admin_sync_all_data'),
     path('dashboard/users/', core_views.admin_users_view, name='admin_users'),
+    path('dashboard/users/create/', core_views.admin_create_user, name='admin_create_user'),
     path('dashboard/users/<int:user_id>/delete/', core_views.admin_delete_user, name='admin_delete_user'),
     path('dashboard/users/<int:user_id>/toggle/', core_views.toggle_user_assignment, name='toggle_user_assignment'),
     path('dashboard/users/<int:user_id>/update_role/', core_views.update_user_role, name='update_user_role'),

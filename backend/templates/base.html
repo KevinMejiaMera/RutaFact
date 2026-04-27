@@ -196,9 +196,28 @@
             box-shadow: 0 0 0 4px rgba(108, 99, 255, 0.1);
         }
 
-        select.form-control option {
-            background: #1a1a1a;
+        select.form-control {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-color: var(--bg-card); /* Solid background prevents browser white default */
             color: white;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%23DEDEDE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>');
+            background-repeat: no-repeat;
+            background-position: right 15px center;
+            padding-right: 40px;
+        }
+
+        select.form-control:focus {
+            background-color: var(--bg-card);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(176, 139, 144, 0.1);
+        }
+
+        select.form-control option {
+            background-color: #1a1a1a;
+            color: white;
+            padding: 10px;
         }
 
         /* Ocultar flechas de inputs numéricos globalmente */
