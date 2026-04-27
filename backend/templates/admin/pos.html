@@ -582,12 +582,16 @@
         let tax = 0;
 
         cart.forEach(item => {
-            const lineSub = item.price * item.quantity;
+            const lineTotal = item.price * item.quantity;
             if (item.taxRate > 0) {
+                const rateFactor = 1 + (item.taxRate / 100);
+                const lineSub = lineTotal / rateFactor;
+                const lineTax = lineTotal - lineSub;
+                
                 subIva += lineSub;
-                tax += lineSub * (item.taxRate / 100);
+                tax += lineTax;
             } else {
-                sub0 += lineSub;
+                sub0 += lineTotal;
             }
         });
 

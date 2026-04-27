@@ -740,30 +740,37 @@ def admin_pos_view(request):
                 for item in items:
                     product = ProductTemplate.objects.get(id=item['id'], company=company)
                     qty = Decimal(str(item['quantity']))
-                    price = Decimal(str(item['price']))
-                    discount = Decimal(str(item.get('discount', 0)))
+                    price_inclusive = Decimal(str(item['price']))
+                    discount_inclusive = Decimal(str(item.get('discount', 0)))
                     
-                    line_subtotal = (qty * price) - discount
-                    
-                    # Determinar tasa de impuesto (usar la del producto en DB)
                     tax_rate = product.tax_rate
                     
                     if tax_rate > 0:
-                        subtotal_iva += line_subtotal
-                        total_tax += line_subtotal * (tax_rate / 100)
+                        rate_factor = Decimal('1') + (tax_rate / Decimal('100'))
+                        price_exclusive = price_inclusive / rate_factor
+                        discount_exclusive = discount_inclusive / rate_factor
                     else:
-                        subtotal_0 += line_subtotal
+                        price_exclusive = price_inclusive
+                        discount_exclusive = discount_inclusive
+                        
+                    line_subtotal_exclusive = (qty * price_exclusive) - discount_exclusive
                     
-                    total_discount += discount
+                    if tax_rate > 0:
+                        subtotal_iva += line_subtotal_exclusive
+                        total_tax += line_subtotal_exclusive * (tax_rate / Decimal('100'))
+                    else:
+                        subtotal_0 += line_subtotal_exclusive
+                    
+                    total_discount += discount_exclusive
                     
                     # Agregar a lista limpia para el XML
                     clean_items.append({
                         'id': item['id'],
                         'name': product.name,
                         'quantity': float(qty),
-                        'price': float(price),
+                        'price': float(price_exclusive),
                         'tax_rate': float(tax_rate),
-                        'discount': float(discount)
+                        'discount': float(discount_exclusive)
                     })
                 
                 # Redondear a 2 decimales para evitar errores de validación
