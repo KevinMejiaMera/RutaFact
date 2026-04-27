@@ -605,15 +605,39 @@ class PDFGenerator:
                 left_side.append(Spacer(1, 5*mm))
 
         # 2. Forma de Pago
-        # Buscamos en additional_data o usamos uno por defecto
-        payment_method = "Sin utilización del sistema financiero"
-        if self.document.additional_data and 'Forma de Pago' in self.document.additional_data:
-             payment_method = self.document.additional_data['Forma de Pago']
+        PAYMENT_NAMES = {
+            '01': 'SIN UTILIZACION DEL SISTEMA FINANCIERO',
+            '16': 'TARJETA DE DEBITO',
+            '17': 'DINERO ELECTRONICO',
+            '18': 'TARJETA DE PREPAGO',
+            '19': 'TARJETA DE CREDITO',
+            '20': 'OTROS CON UTILIZACION DEL SISTEMA FINANCIERO',
+            '21': 'ENDOSO DE TITULOS'
+        }
         
         payment_data = [
-            [Paragraph("Forma de Pago", self.styles['LabelStyle']), Paragraph("Valor", self.styles['LabelStyle'])],
-            [Paragraph(payment_method, self.styles['ValueStyle']), Paragraph(f"{self.document.total_amount:.2f}", self.styles['ValueStyle'])]
+            [Paragraph("Forma de Pago", self.styles['LabelStyle']), Paragraph("Valor", self.styles['LabelStyle'])]
         ]
+        
+        payments = self.document.payment_methods.all()
+        if payments.exists():
+            for p in payments:
+                name = PAYMENT_NAMES.get(p.payment_method_code, 'OTROS CON UTILIZACION DEL SISTEMA FINANCIERO')
+                payment_data.append([
+                    Paragraph(name, self.styles['ValueStyle']), 
+                    Paragraph(f"{p.amount:.2f}", self.styles['ValueStyle'])
+                ])
+        else:
+            # Fallback a additional_data o default
+            payment_method = "SIN UTILIZACION DEL SISTEMA FINANCIERO"
+            if self.document.additional_data and 'Forma de Pago' in self.document.additional_data:
+                 payment_method = self.document.additional_data['Forma de Pago']
+            
+            payment_data.append([
+                Paragraph(payment_method, self.styles['ValueStyle']), 
+                Paragraph(f"{self.document.total_amount:.2f}", self.styles['ValueStyle'])
+            ])
+
         payment_table = Table(payment_data, colWidths=[65*mm, 25*mm])
         payment_table.setStyle(TableStyle([
             ('GRID', (0, 0), (-1, -1), 0.5, colors.black),

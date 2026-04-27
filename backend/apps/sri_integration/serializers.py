@@ -7,7 +7,7 @@ from rest_framework import serializers
 from decimal import Decimal
 from .models import (
     SRIConfiguration, ElectronicDocument, DocumentItem,
-    DocumentTax, SRIResponse
+    DocumentTax, DocumentPayment, SRIResponse
 )
 
 class SRIConfigurationSerializer(serializers.ModelSerializer):
@@ -35,6 +35,15 @@ class DocumentItemCreateSerializer(serializers.Serializer):
         if value <= 0:
             raise serializers.ValidationError("Unit price must be greater than 0")
         return value
+
+class DocumentPaymentCreateSerializer(serializers.Serializer):
+    """
+    Serializer para crear formas de pago
+    """
+    payment_method_code = serializers.CharField(max_length=2, default='01')
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    payment_term = serializers.IntegerField(default=0, required=False)
+    time_unit = serializers.CharField(max_length=20, default='dias', required=False)
 
 class CreateInvoiceSerializer(serializers.Serializer):
     """
@@ -65,6 +74,9 @@ class CreateInvoiceSerializer(serializers.Serializer):
     
     # Items de la factura
     items = DocumentItemCreateSerializer(many=True)
+    
+    # Pagos de la factura
+    payments = DocumentPaymentCreateSerializer(many=True, required=False)
     
     def validate_items(self, value):
         if not value:
@@ -122,9 +134,19 @@ class ElectronicDocumentSerializer(serializers.ModelSerializer):
     """
     items = DocumentItemSerializer(many=True, read_only=True)
     taxes = DocumentTaxSerializer(many=True, read_only=True)
+    payment_methods = serializers.SerializerMethodField()
     
     class Meta:
         model = ElectronicDocument
+        fields = '__all__'
+        
+    def get_payment_methods(self, obj):
+        payments = obj.payment_methods.all()
+        return DocumentPaymentSerializer(payments, many=True).data
+
+class DocumentPaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DocumentPayment
         fields = '__all__'
 
 class SRIResponseSerializer(serializers.ModelSerializer):

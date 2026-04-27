@@ -107,6 +107,7 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                 # Obtener datos validados
                 validated_data = serializer.validated_data
                 items_data = validated_data.pop("items")
+                payments_data = validated_data.pop("payments", [])
                 
                 # Obtener empresa
                 company = Company.objects.get(id=validated_data["company"])
@@ -156,8 +157,9 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                     document.status = "DRAFT"
                     document.save()
                     
-                    # Limpiar items anteriores para recrearlos
+                    # Limpiar items y pagos anteriores para recrearlos
                     document.items.all().delete()
+                    document.payment_methods.all().delete()
                 else:
                     # Crear documento electrónico nuevo
                     document = ElectronicDocument.objects.create(
@@ -254,6 +256,26 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                 document.total_amount = fix_decimal_places(total_amount, 2)
                 document.status = "GENERATED"
                 document.save()
+                
+                # Crear pagos si existen
+                if payments_data:
+                    for payment_data in payments_data:
+                        DocumentPayment.objects.create(
+                            document=document,
+                            payment_method_code=payment_data.get("payment_method_code", "01"),
+                            amount=fix_decimal_places(payment_data["amount"], 2),
+                            payment_term=payment_data.get("payment_term", 0),
+                            time_unit=payment_data.get("time_unit", "dias")
+                        )
+                else:
+                    # Crear pago por defecto (efectivo) si no se enviaron pagos
+                    DocumentPayment.objects.create(
+                        document=document,
+                        payment_method_code="01",
+                        amount=document.total_amount,
+                        payment_term=0,
+                        time_unit="dias"
+                    )
                 
                 # ===============================================
                 # NUEVA FUNCIONALIDAD: ENVÍO AUTOMÁTICO AL SRI

@@ -704,6 +704,15 @@ def admin_pos_view(request):
                     created_by=request.user
                 )
                 
+                # Registrar forma de pago real para el SRI
+                from apps.sri_integration.models import DocumentPayment
+                DocumentPayment.objects.create(
+                    document=doc,
+                    payment_method_code=payment_method_code,
+                    amount=total_amount,
+                    payment_term=0,
+                    time_unit='dias'
+                )
                 # 2. Registrar ítems sanitizados en adicionales
                 doc.additional_data = {'pos_items': clean_items}
                 doc.save()

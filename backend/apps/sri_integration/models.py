@@ -1170,6 +1170,51 @@ class DocumentTax(BaseModel):
         return f"{self.get_tax_code_display()} {self.rate}% - {self.tax_amount}"
 
 
+class DocumentPayment(BaseModel):
+    """
+    Formas de pago de documentos electrónicos según Tabla 16 del SRI
+    """
+    document = models.ForeignKey(
+        ElectronicDocument,
+        on_delete=models.CASCADE,
+        related_name='payment_methods',
+        verbose_name=_('document')
+    )
+    
+    payment_method_code = models.CharField(
+        _('payment method code'),
+        max_length=2,
+        default='01',
+        help_text=_('SRI Payment method code (e.g., 01 for Cash)')
+    )
+    
+    amount = models.DecimalField(
+        _('amount'),
+        max_digits=12,
+        decimal_places=2
+    )
+    
+    payment_term = models.IntegerField(
+        _('payment term'),
+        default=0,
+        help_text=_('Term in units of time')
+    )
+    
+    time_unit = models.CharField(
+        _('time unit'),
+        max_length=20,
+        default='dias',
+        help_text=_('Unit of time for the term (e.g., dias)')
+    )
+    
+    class Meta:
+        verbose_name = _('Document Payment')
+        verbose_name_plural = _('Document Payments')
+
+    def __str__(self):
+        return f"{self.payment_method_code} - {self.amount}"
+
+
 class SRIResponse(BaseModel):
     """
     Respuestas del SRI
