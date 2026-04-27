@@ -118,7 +118,8 @@ def token_login(request):
             'email': user.email,
             'full_name': f"{user.first_name} {user.last_name}".strip(),
             'role': user.role,
-            'can_track': user.can_track
+            'can_track': user.can_track,
+            'company': user_companies.first().id if user_companies.exists() else (user.company.id if user.company else None)
         },
         'recommendations': {
             'use_company_tokens': True,
@@ -234,7 +235,8 @@ def auth_status(request):
                     'first_name': user.first_name,
                     'full_name': f"{user.first_name} {user.last_name}".strip(),
                     'role': user.role,
-                    'can_track': user.can_track
+                    'can_track': user.can_track,
+                    'company': get_user_companies_exact(user).first().id if get_user_companies_exact(user).exists() else (user.company.id if hasattr(user, 'company') and user.company else None)
                 }
             })
     

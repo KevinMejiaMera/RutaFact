@@ -31,6 +31,16 @@ class Customer(BaseModel):
         verbose_name=_('company')
     )
     
+    user = models.OneToOneField(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='customer_profile',
+        verbose_name=_('associated user'),
+        help_text=_('User account associated with this customer profile')
+    )
+    
     identification_type = models.CharField(
         _('identification type'),
         max_length=2,

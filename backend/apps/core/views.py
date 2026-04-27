@@ -1258,3 +1258,56 @@ def admin_reports_view(request):
     }
     
     return render(request, 'admin/reports.html', context)
+
+@login_required
+@user_passes_test(is_admin)
+def admin_orders_view(request):
+    """Vista para gestión de Pedidos de clientes"""
+    from apps.orders.models import Order
+    companies = get_user_companies_secure(request.user)
+    company = companies.first()
+    
+    pending_orders = []
+    completed_orders = []
+    
+    if company:
+        pending_orders = Order.objects.filter(company=company, status='PENDING').order_by('-created_at')
+        completed_orders = Order.objects.filter(company=company, status='COMPLETED').order_by('-created_at')
+
+    context = {
+        'company': company,
+        'pending_orders': pending_orders,
+        'completed_orders': completed_orders,
+        'user': request.user,
+    }
+    return render(request, 'admin/orders.html', context)
+
+@login_required
+@user_passes_test(is_admin)
+def admin_complete_order(request, pk):
+    """Procesar un pedido desde la web (Acción manual del admin)"""
+    from apps.orders.models import Order
+    from apps.api.views.order_views import OrderViewSet
+    from rest_framework.request import Request
+    
+    companies = get_user_companies_secure(request.user)
+    order = get_object_or_404(Order, pk=pk, company__in=companies)
+    
+    # Simular un request de DRF para reutilizar la lógica de complete_and_invoice
+    factory = Request(request)
+    factory._user = request.user  # Asignar explícitamente el usuario autenticado
+    viewset = OrderViewSet()
+    viewset.request = factory
+    viewset.action = 'complete_and_invoice'
+    viewset.kwargs = {'pk': pk}
+    
+    response = viewset.complete_and_invoice(factory, pk=pk)
+    
+    if response.status_code == 200:
+        messages.success(request, "Pedido completado y factura generada exitosamente.")
+    else:
+        error_msg = response.data.get('message', 'Error desconocido')
+        messages.error(request, f"Error al procesar pedido: {error_msg}")
+        
+    return redirect('admin_orders')
+

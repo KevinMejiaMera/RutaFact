@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block page_title %}Gestión de Pedidos{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom: 30px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+        <div>
+            <h2 class="gradient-text"><i class="fas fa-shopping-basket"></i> Pedidos de Clientes</h2>
+            <p style="color: var(--text-dim); font-size: 14px; margin-top: 5px;">Gestione las solicitudes entrantes desde la aplicación móvil.</p>
+        </div>
+    </div>
+
+    <!-- Pestañas para Pendientes / Completados -->
+    <div style="display: flex; gap: 10px; margin-bottom: 25px;">
+        <button onclick="switchTab('pending')" id="tab-pending" class="btn-primary" style="background: var(--primary);">Pendientes ({{ pending_orders|length }})</button>
+        <button onclick="switchTab('completed')" id="tab-completed" class="btn-primary" style="background: rgba(255,255,255,0.05); color: var(--text-dim);">Completados ({{ completed_orders|length }})</button>
+    </div>
+
+    <!-- Tabla de Pedidos Pendientes -->
+    <div id="section-pending" class="table-responsive">
+        <table style="width: 100%; border-collapse: separate; border-spacing: 0 10px;">
+            <thead>
+                <tr style="color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">
+                    <th style="padding: 10px 20px; text-align: left;">ID / Fecha</th>
+                    <th style="padding: 10px 20px; text-align: left;">Cliente</th>
+                    <th style="padding: 10px 20px; text-align: left;">Dirección / Entrega</th>
+                    <th style="padding: 10px 20px; text-align: right;">Total</th>
+                    <th style="padding: 10px 20px; text-align: center;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in pending_orders %}
+                <tr style="background: rgba(255,255,255,0.02); border-radius: 12px;">
+                    <td style="padding: 20px; border-radius: 12px 0 0 12px;">
+                        <span style="display: block; font-weight: 700;">#{{ order.id }}</span>
+                        <span style="font-size: 12px; color: var(--text-dim);">{{ order.created_at|date:"d/m/Y H:i" }}</span>
+                    </td>
+                    <td style="padding: 20px;">
+                        <span style="display: block; font-weight: 600;">{{ order.customer.name }}</span>
+                        <span style="font-size: 11px; color: var(--accent);">{{ order.customer.identification }}</span>
+                    </td>
+                    <td style="padding: 20px;">
+                        <span style="font-size: 13px;">{{ order.delivery_address }}</span>
+                    </td>
+                    <td style="padding: 20px; text-align: right;">
+                        <span style="font-weight: 700; color: var(--primary);">$ {{ order.total_amount }}</span>
+                    </td>
+                    <td style="padding: 20px; text-align: center; border-radius: 0 12px 12px 0;">
+                        <div style="display: flex; gap: 8px; justify-content: center;">
+                            <a href="{% url 'admin_complete_order' order.pk %}" class="action-btn" title="Completar y Facturar" style="background: rgba(155, 176, 168, 0.1); color: var(--accent);">
+                                <i class="fas fa-check-double"></i>
+                            </a>
+                            <button onclick="showOrderDetails({{ order.id }})" class="action-btn" title="Ver Detalles">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-dim);">No hay pedidos pendientes</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Tabla de Pedidos Completados -->
+    <div id="section-completed" class="table-responsive" style="display: none;">
+        <table style="width: 100%; border-collapse: separate; border-spacing: 0 10px;">
+            <thead>
+                <tr style="color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">
+                    <th style="padding: 10px 20px; text-align: left;">ID / Fecha</th>
+                    <th style="padding: 10px 20px; text-align: left;">Cliente</th>
+                    <th style="padding: 10px 20px; text-align: left;">Factura Asociada</th>
+                    <th style="padding: 10px 20px; text-align: right;">Total</th>
+                    <th style="padding: 10px 20px; text-align: center;">Estado SRI</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in completed_orders %}
+                <tr style="background: rgba(255,255,255,0.01); border-radius: 12px; opacity: 0.8;">
+                    <td style="padding: 20px; border-radius: 12px 0 0 12px;">
+                        <span style="display: block; font-weight: 700;">#{{ order.id }}</span>
+                        <span style="font-size: 12px; color: var(--text-dim);">{{ order.created_at|date:"d/m/Y H:i" }}</span>
+                    </td>
+                    <td style="padding: 20px;">
+                        <span style="display: block; font-weight: 600;">{{ order.customer.name }}</span>
+                    </td>
+                    <td style="padding: 20px;">
+                        {% if order.invoice %}
+                        <span style="font-weight: 600; color: var(--accent);">{{ order.invoice.document_number }}</span>
+                        {% else %}
+                        <span style="color: var(--text-dim);">Sin factura</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 20px; text-align: right;">
+                        <span style="font-weight: 700;">$ {{ order.total_amount }}</span>
+                    </td>
+                    <td style="padding: 20px; text-align: center; border-radius: 0 12px 12px 0;">
+                        {% if order.invoice %}
+                            <span style="padding: 5px 12px; border-radius: 20px; font-size: 10px; font-weight: 700; background: rgba(155, 176, 168, 0.1); color: var(--accent);">
+                                {{ order.invoice.status }}
+                            </span>
+                        {% else %}
+                            <span style="color: var(--text-dim);">--</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+    <!-- Modal de Detalles de Pedido -->
+    <div id="orderModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+        <div class="modal-content" style="background: var(--bg-card); padding: 30px; border-radius: 20px; width: 90%; max-width: 600px; border: 1px solid rgba(255,255,255,0.1); position: relative;">
+            <button onclick="closeModal()" style="position: absolute; top: 20px; right: 20px; background: none; border: none; color: white; cursor: pointer; font-size: 20px;">
+                <i class="fas fa-times"></i>
+            </button>
+            <h3 id="modalTitle" style="margin-bottom: 20px;" class="gradient-text">Detalles del Pedido</h3>
+            
+            <div id="modalContent" style="max-height: 400px; overflow-y: auto;">
+                <p style="color: var(--text-dim);">Cargando ítems...</p>
+            </div>
+            
+            <div style="margin-top: 25px; text-align: right;">
+                <button onclick="closeModal()" class="btn-primary" style="background: rgba(255,255,255,0.1); color: white;">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function switchTab(tab) {
+        if (tab === 'pending') {
+            document.getElementById('section-pending').style.display = 'block';
+            document.getElementById('section-completed').style.display = 'none';
+            document.getElementById('tab-pending').style.background = 'var(--primary)';
+            document.getElementById('tab-pending').style.color = 'white';
+            document.getElementById('tab-completed').style.background = 'rgba(255,255,255,0.05)';
+            document.getElementById('tab-completed').style.color = 'var(--text-dim)';
+        } else {
+            document.getElementById('section-pending').style.display = 'none';
+            document.getElementById('section-completed').style.display = 'block';
+            document.getElementById('tab-completed').style.background = 'var(--primary)';
+            document.getElementById('tab-completed').style.color = 'white';
+            document.getElementById('tab-pending').style.background = 'rgba(255,255,255,0.05)';
+            document.getElementById('tab-pending').style.color = 'var(--text-dim)';
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('orderModal').style.display = 'none';
+    }
+
+    async function showOrderDetails(orderId) {
+        const modal = document.getElementById('orderModal');
+        const content = document.getElementById('modalContent');
+        const title = document.getElementById('modalTitle');
+        
+        modal.style.display = 'flex';
+        title.innerText = `Detalles del Pedido #${orderId}`;
+        content.innerHTML = '<p style="color: var(--text-dim);">Cargando ítems...</p>';
+        
+        try {
+            const response = await fetch(`/api/orders/${orderId}/`);
+            if (!response.ok) throw new Error("Error al cargar detalles");
+            
+            const data = await response.json();
+            
+            let html = `
+                <div style="margin-bottom: 20px; padding: 15px; background: rgba(255,255,255,0.03); border-radius: 12px;">
+                    <p><strong>Cliente:</strong> ${data.customer_name}</p>
+                    <p><strong>Dirección:</strong> ${data.delivery_address}</p>
+                    <p><strong>Notas:</strong> ${data.notes || 'Sin notas'}</p>
+                </div>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-dim); font-size: 12px;">
+                            <th style="padding: 10px; text-align: left;">Producto</th>
+                            <th style="padding: 10px; text-align: center;">Cant.</th>
+                            <th style="padding: 10px; text-align: right;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            if (data.items && data.items.length > 0) {
+                data.items.forEach(item => {
+                    html += `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 12px;">${item.product_name}</td>
+                            <td style="padding: 12px; text-align: center;">${item.quantity}</td>
+                            <td style="padding: 12px; text-align: right; font-weight: 600;">$ ${parseFloat(item.total).toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+            } else {
+                html += '<tr><td colspan="3" style="text-align: center; padding: 20px;">No hay ítems en este pedido</td></tr>';
+            }
+            
+            html += `
+                    </tbody>
+                </table>
+                <div style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; text-align: right;">
+                    <p style="margin-bottom: 5px; color: var(--text-dim);">Subtotal: $ ${parseFloat(data.subtotal_without_tax).toFixed(2)}</p>
+                    <p style="margin-bottom: 10px; color: var(--text-dim);">IVA: $ ${parseFloat(data.total_tax).toFixed(2)}</p>
+                    <p style="font-size: 18px; font-weight: 700; color: var(--primary);">TOTAL: $ ${parseFloat(data.total_amount).toFixed(2)}</p>
+                </div>
+            `;
+            
+            content.innerHTML = html;
+        } catch (error) {
+            content.innerHTML = `<p style="color: #ff4d4d;">Error: ${error.message}</p>`;
+        }
+    }
+</script>
+
+{% endblock %}

@@ -366,6 +366,11 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a href="/dashboard/orders/" class="nav-link {% if request.path == '/dashboard/orders/' %}active{% endif %}">
+                    <i class="fas fa-shopping-basket"></i> <strong>Pedidos</strong>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a href="/dashboard/invoices/" class="nav-link {% if request.path == '/dashboard/invoices/' %}active{% endif %}"><i class="fas fa-file-invoice"></i> Comprobantes</a>
             </li>
             <li class="nav-item">
