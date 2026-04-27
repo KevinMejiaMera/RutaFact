@@ -21,23 +21,28 @@ def get_user_companies_exact(user):
     if user.is_superuser:
         return Company.objects.filter(is_active=True)
     
-    # 2. Verificar UserCompanyAssignment (Sistema de Sala de Espera)
+    # 2. Obtener IDs de empresas por ambos sistemas
+    company_ids = set()
+    
+    # Sistema A: UserCompanyAssignment (M2M)
     try:
         from apps.users.models import UserCompanyAssignment
         assignment = UserCompanyAssignment.objects.filter(user=user, status='assigned').first()
         if assignment:
-            return assignment.get_assigned_companies().filter(is_active=True)
+            ids = assignment.assigned_companies.filter(is_active=True).values_list('id', flat=True)
+            company_ids.update(ids)
     except Exception as e:
         logger.error(f"Error checking UserCompanyAssignment for {user.username}: {e}")
     
-    # 3. Fallback: Relación directa User.company
+    # Sistema B: Relación directa User.company (FK)
     if hasattr(user, 'company') and user.company and user.company.is_active:
-        return Company.objects.filter(id=user.company.id)
+        company_ids.add(user.company.id)
     
-    # 4. Último fallback: Buscar la primera empresa activa solo si el sistema es de empresa única
-    # pero esto puede causar el error "bloqueado" si el usuario no tiene relación explícita.
-    # Por ahora, si no tiene nada explícito, devolvemos vacío para forzar asignación.
-    logger.warning(f"⚠️ Usuario {user.username} no tiene empresas asignadas explícitamente")
+    # 3. Retornar el queryset final
+    if company_ids:
+        return Company.objects.filter(id__in=company_ids, is_active=True)
+    
+    logger.warning(f"⚠️ Usuario {user.username} no tiene empresas asignadas")
     return Company.objects.none()
 
 

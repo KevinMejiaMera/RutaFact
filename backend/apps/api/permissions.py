@@ -89,18 +89,17 @@ class IsCompanyOwnerOrAdmin(permissions.BasePermission):
             return False
         
         # Verificar si el usuario tiene acceso a la empresa
-        if hasattr(request.user, 'companies'):
-            has_access = company in request.user.companies.filter(is_active=True)
-            
-            if not has_access:
-                logger.warning(f"User {request.user.username} denied access to company {company.id}")
-            else:
-                logger.info(f"User {request.user.username} granted access to company {company.id}")
-            
-            return has_access
+        from apps.api.user_company_helper import get_user_companies_exact
+        user_companies = get_user_companies_exact(request.user)
+        
+        has_access = user_companies.filter(id=company.id).exists()
+        
+        if not has_access:
+            logger.warning(f"User {getattr(request.user, 'email', 'Unknown')} denied access to company {company.id}")
         else:
-            logger.warning(f"User {getattr(request.user, 'username', 'Unknown')} has no companies attribute")
-            return False
+            logger.info(f"User {getattr(request.user, 'email', 'Unknown')} granted access to company {company.id}")
+        
+        return has_access
     
     def _get_related_company(self, obj):
         """
@@ -277,10 +276,9 @@ class SRIDocumentPermission(permissions.BasePermission):
         if not company:
             return False
         
-        if hasattr(request.user, 'companies'):
-            return company in request.user.companies.filter(is_active=True)
-        else:
-            return False
+        from apps.api.user_company_helper import get_user_companies_exact
+        user_companies = get_user_companies_exact(request.user)
+        return user_companies.filter(id=company.id).exists()
     
     def _validate_company_access(self, user, company_id):
         """Valida acceso del usuario a la empresa usando sistema de empresa única."""
@@ -405,22 +403,8 @@ def get_user_accessible_companies(user):
     """
     Obtiene las empresas accesibles para el usuario - CORREGIDO PARA VSR
     """
-    if not user or not user.is_authenticated:
-        return []
-    
-    if user.is_superuser:
-        from apps.companies.models import Company
-        return Company.objects.filter(is_active=True)
-    
-    # ✅ NUEVO: VirtualCompanyUser puede acceder a todas las empresas activas
-    if hasattr(user, '__class__') and 'Virtual' in user.__class__.__name__:
-        from apps.companies.models import Company
-        return Company.objects.filter(is_active=True)
-    
-    if hasattr(user, 'companies'):
-        return user.companies.filter(is_active=True)
-    
-    return []
+    from apps.api.user_company_helper import get_user_companies_exact
+    return get_user_companies_exact(user)
 
 
 def check_company_permission(user, company_id, action='access'):
@@ -446,14 +430,13 @@ def check_company_permission(user, company_id, action='access'):
         except Company.DoesNotExist:
             return False, f"Company {company_id} does not exist"
         
-        if hasattr(user, 'companies'):
-            has_access = company in user.companies.filter(is_active=True)
-            if has_access:
-                return True, f"User has {action} permission for company {company_id}"
-            else:
-                return False, f"User does not have {action} permission for company {company_id}"
+        from apps.api.user_company_helper import get_user_companies_exact
+        has_access = get_user_companies_exact(user).filter(id=company.id).exists()
         
-        return False, "User has no company relationships"
+        if has_access:
+            return True, f"User has {action} permission for company {company_id}"
+        else:
+            return False, f"User does not have {action} permission for company {company_id}"
         
     except (ValueError, TypeError):
         return False, f"Invalid company_id format: {company_id}"
@@ -488,11 +471,8 @@ class VendoSRIPermission(permissions.BasePermission):
                 logger.warning(f"Permission denied: {message}")
             return is_valid
         
-        # Para listados generales, verificar que tenga al menos una empresa
-        if hasattr(request.user, 'companies'):
-            return request.user.companies.filter(is_active=True).exists()
-        else:
-            return False
+        from apps.api.user_company_helper import get_user_companies_exact
+        return get_user_companies_exact(request.user).exists()
     
     def has_object_permission(self, request, view, obj):
         if request.user.is_superuser:
