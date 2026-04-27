@@ -6,6 +6,7 @@ Procesador principal de documentos electrónicos — VERSIÓN PYTHON PURO
    Firma XAdES-BES implementada 100% en Python con lxml + cryptography.
 """
 
+import os
 import logging
 import time
 from datetime import datetime, timezone, timedelta
@@ -403,7 +404,23 @@ class DocumentProcessor:
                 return False, f"PDF not implemented for {document.document_type}"
 
             pdf_gen = PDFGenerator(document)
-            pdf_content = getattr(pdf_gen, method_name)()
+            result = getattr(pdf_gen, method_name)()
+            
+            # El generador puede devolver bytes o (success, file_path)
+            if isinstance(result, tuple):
+                success, pdf_path = result
+                if not success:
+                    return False, f"PDF_GENERATION_FAILED: {pdf_path}"
+                try:
+                    with open(pdf_path, 'rb') as f:
+                        pdf_content = f.read()
+                    # Limpiar temporal
+                    if os.path.exists(pdf_path):
+                        os.remove(pdf_path)
+                except Exception as e:
+                    return False, f"PDF_READ_ERROR: {str(e)}"
+            else:
+                pdf_content = result
 
             filename = f"{document.access_key}.pdf"
             document.pdf_file.save(filename, ContentFile(pdf_content), save=True)

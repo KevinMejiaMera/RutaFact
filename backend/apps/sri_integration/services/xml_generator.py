@@ -9,6 +9,7 @@ CUMPLE: Resoluciones vigentes del SRI Ecuador
 
 import logging
 import os
+import re
 from datetime import datetime
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom import minidom
@@ -452,16 +453,31 @@ class XMLGeneratorSRI2025:
             # 2. Validar elementos esenciales obligatorios
             essential_elements = [
                 '<ambiente>', '<ruc>', '<claveAcceso>', 
-                '<totalSinImpuestos>', '<importeTotal>',
+                '<totalSinImpuestos>',
                 '<tipoEmision>', '<codDoc>'
             ]
+            
+            # El tag de total varía según el tipo de documento. Identificamos el tipo por el tag raíz.
+            root_tag_match = re.search(r'<(\w+)', xml_str)
+            root_tag = root_tag_match.group(1) if root_tag_match else ''
+            
+            logger.info(f"Validando estructura para documento con tag raíz: {root_tag}")
+            
+            if root_tag in ['factura', 'liquidacionCompra']:
+                essential_elements.append('<importeTotal>')
+            elif root_tag == 'notaCredito':
+                essential_elements.append('<valorModificacion>')
+            elif root_tag == 'notaDebito':
+                essential_elements.append('<valorTotal>')
+            elif root_tag == 'comprobanteRetencion':
+                # Las retenciones no tienen un tag de total global en el infoCompRetencion (están en los detalles)
+                pass
             
             for element in essential_elements:
                 if element not in xml_str:
                     raise ValueError(f"ERROR: Elemento esencial faltante: {element}")
             
             # 3. Validar formato de decimales (solo advertencia, no error)
-            import re
             decimal_patterns = [
                 r'<cantidad>(\d+\.\d{3,})</cantidad>',
                 r'<precioUnitario>(\d+\.\d{3,})</precioUnitario>',
@@ -1063,56 +1079,66 @@ class XMLGeneratorSRI2025:
     # ========== MÉTODOS PARA OTROS TIPOS DE DOCUMENTO ==========
     
     def _create_info_nota_credito(self):
-        """Información de nota de crédito v1.1.0"""
+        """Información de nota de crédito v1.1.0 - ORDEN SEGÚN FICHA TÉCNICA v2.32"""
         info_nota_credito = Element('infoNotaCredito')
         
-        # Campos básicos
+        # 1. fechaEmision
         SubElement(info_nota_credito, 'fechaEmision').text = self.document.issue_date.strftime('%d/%m/%Y')
+        
+        # 2. dirEstablecimiento
         SubElement(info_nota_credito, 'dirEstablecimiento').text = (
             self.company.address[:300] if self.company.address else 'Dirección no especificada'
         )
         
-        # Contribuyente especial
-        if (hasattr(self.sri_config, 'special_taxpayer') and self.sri_config.special_taxpayer and 
-            hasattr(self.sri_config, 'special_taxpayer_number') and self.sri_config.special_taxpayer_number):
-            SubElement(info_nota_credito, 'contribuyenteEspecial').text = str(self.sri_config.special_taxpayer_number)
-        
-        SubElement(info_nota_credito, 'obligadoContabilidad').text = 'SI' if self.sri_config.accounting_required else 'NO'
-        
-        # Información del comprador
+        # 3. tipoIdentificacionComprador
         SubElement(info_nota_credito, 'tipoIdentificacionComprador').text = str(
             getattr(self.document, 'customer_identification_type', '05')
         )
+        
+        # 4. razonSocialComprador
         SubElement(info_nota_credito, 'razonSocialComprador').text = str(
             getattr(self.document, 'customer_name', 'Cliente')
         )[:300]
+        
+        # 5. identificacionComprador
         SubElement(info_nota_credito, 'identificacionComprador').text = str(
             getattr(self.document, 'customer_identification', '9999999999999')
         )
         
-        # Dirección del comprador (opcional)
-        if hasattr(self.document, 'customer_address') and self.document.customer_address:
-            SubElement(info_nota_credito, 'direccionComprador').text = str(self.document.customer_address)[:300]
+        # 6. contribuyenteEspecial (opcional)
+        if (hasattr(self.sri_config, 'special_taxpayer') and self.sri_config.special_taxpayer and 
+            hasattr(self.sri_config, 'special_taxpayer_number') and self.sri_config.special_taxpayer_number):
+            SubElement(info_nota_credito, 'contribuyenteEspecial').text = str(self.sri_config.special_taxpayer_number)
         
-        # Motivo
-        SubElement(info_nota_credito, 'motivo').text = str(
-            getattr(self.document, 'reason_description', 'Nota de crédito')
-        )[:300]
+        # 7. obligadoContabilidad
+        SubElement(info_nota_credito, 'obligadoContabilidad').text = 'SI' if self.sri_config.accounting_required else 'NO'
         
-        # Documento modificado
+        # 8. codDocModificado
         if hasattr(self.document, 'original_document') and self.document.original_document:
             SubElement(info_nota_credito, 'codDocModificado').text = '01'  # Factura
+            
+            # 9. numDocModificado
             SubElement(info_nota_credito, 'numDocModificado').text = self.document.original_document.document_number
+            
+            # 10. fechaEmisionDocSustento
             SubElement(info_nota_credito, 'fechaEmisionDocSustento').text = (
                 self.document.original_document.issue_date.strftime('%d/%m/%Y')
             )
         
-        # Totales
+        # 11. totalSinImpuestos
         SubElement(info_nota_credito, 'totalSinImpuestos').text = self._format_decimal(
             self.document.subtotal_without_tax
         )
         
-        # Impuestos
+        # 12. valorModificacion
+        SubElement(info_nota_credito, 'valorModificacion').text = self._format_decimal(
+            self.document.total_amount
+        )
+        
+        # 13. moneda
+        SubElement(info_nota_credito, 'moneda').text = "DOLAR"
+        
+        # 14. totalConImpuestos
         total_con_impuestos = SubElement(info_nota_credito, 'totalConImpuestos')
         taxes_summary = self._get_taxes_summary()
         for tax_data in taxes_summary.values():
@@ -1120,24 +1146,25 @@ class XMLGeneratorSRI2025:
             SubElement(total_impuesto, 'codigo').text = str(tax_data['codigo'])
             SubElement(total_impuesto, 'codigoPorcentaje').text = str(tax_data['codigoPorcentaje'])
             SubElement(total_impuesto, 'baseImponible').text = self._format_decimal(tax_data['base'])
-            SubElement(total_impuesto, 'tarifa').text = self._format_decimal(tax_data['tarifa'])
             SubElement(total_impuesto, 'valor').text = self._format_decimal(tax_data['valor'])
+            # Nota: tarifa NO es obligatoria en totalImpuesto de Nota de Crédito según algunas fichas, 
+            # pero si se incluye debe ser después de baseImponible.
         
-        SubElement(info_nota_credito, 'valorModificacion').text = self._format_decimal(
-            self.document.total_amount
-        )
-        SubElement(info_nota_credito, 'moneda').text = "DOLAR"
+        # 15. motivo
+        SubElement(info_nota_credito, 'motivo').text = str(
+            getattr(self.document, 'reason_description', 'Nota de crédito')
+        )[:300]
         
         return info_nota_credito
     
     def _create_detalle_nota_credito(self, item):
-        """Detalle de nota de crédito v1.1.0"""
+        """Detalle de nota de crédito v1.1.0 - TAGS SEGÚN FICHA TÉCNICA"""
         detalle = Element('detalle')
         
-        SubElement(detalle, 'codigoPrincipal').text = str(getattr(item, 'main_code', 'NOTAC001'))[:25]
+        SubElement(detalle, 'codigoInterno').text = str(getattr(item, 'main_code', 'NOTAC001'))[:25]
         
         if hasattr(item, 'auxiliary_code') and item.auxiliary_code:
-            SubElement(detalle, 'codigoAuxiliar').text = str(item.auxiliary_code)[:25]
+            SubElement(detalle, 'codigoAdicional').text = str(item.auxiliary_code)[:25]
         
         SubElement(detalle, 'descripcion').text = str(getattr(item, 'description', 'Ítem de nota de crédito'))[:300]
         SubElement(detalle, 'cantidad').text = self._format_decimal(getattr(item, 'quantity', 1), max_decimals=6)
@@ -1145,19 +1172,54 @@ class XMLGeneratorSRI2025:
         SubElement(detalle, 'descuento').text = self._format_decimal(getattr(item, 'discount', 0))
         SubElement(detalle, 'precioTotalSinImpuesto').text = self._format_decimal(getattr(item, 'subtotal', 0))
         
+        # Impuestos del detalle son OBLIGATORIOS en Nota de Crédito
+        impuestos = SubElement(detalle, 'impuestos')
+        if hasattr(item, 'taxes') and item.taxes.exists():
+            for tax in item.taxes.all():
+                impuesto = self._create_tax_detail(tax, item)
+                impuestos.append(impuesto)
+        else:
+            # Impuesto por defecto (IVA 15%)
+            impuesto = self._create_default_tax(item)
+            impuestos.append(impuesto)
+
         return detalle
     
     def _create_detalle_generico_nota_credito(self):
-        """Detalle genérico de nota de crédito v1.1.0"""
+        """Detalle genérico de nota de crédito v1.1.0 - TAGS SEGÚN FICHA TÉCNICA"""
         detalle = Element('detalle')
         
-        SubElement(detalle, 'codigoPrincipal').text = 'NOTAC001'
-        SubElement(detalle, 'descripcion').text = str(getattr(self.document, 'reason_description', 'Nota de crédito'))
+        SubElement(detalle, 'codigoInterno').text = 'NOTAC001'
+        SubElement(detalle, 'descripcion').text = str(getattr(self.document, 'reason_description', 'Nota de crédito'))[:300]
         SubElement(detalle, 'cantidad').text = '1.00'
         SubElement(detalle, 'precioUnitario').text = self._format_decimal(self.document.subtotal_without_tax)
         SubElement(detalle, 'descuento').text = '0.00'
         SubElement(detalle, 'precioTotalSinImpuesto').text = self._format_decimal(self.document.subtotal_without_tax)
         
+        # Impuestos son OBLIGATORIOS
+        impuestos = SubElement(detalle, 'impuestos')
+        impuesto = Element('impuesto')
+        
+        rate = 15.0
+        if float(self.document.total_tax) == 0 and float(self.document.subtotal_without_tax) > 0:
+            rate = 0.00
+        elif float(self.document.subtotal_without_tax) > 0:
+            rate = (float(self.document.total_tax) / float(self.document.subtotal_without_tax)) * 100
+            standard_rates = [15.0, 12.0, 8.0, 5.0, 0.0]
+            for sr in standard_rates:
+                if abs(rate - sr) < 0.1:
+                    rate = sr
+                    break
+                    
+        p_code = self._get_iva_percentage_code(rate)
+        
+        SubElement(impuesto, 'codigo').text = '2'
+        SubElement(impuesto, 'codigoPorcentaje').text = p_code
+        SubElement(impuesto, 'tarifa').text = self._format_decimal(rate)
+        SubElement(impuesto, 'baseImponible').text = self._format_decimal(self.document.subtotal_without_tax)
+        SubElement(impuesto, 'valor').text = self._format_decimal(self.document.total_tax)
+        impuestos.append(impuesto)
+
         return detalle
     
     def _create_info_nota_debito(self):

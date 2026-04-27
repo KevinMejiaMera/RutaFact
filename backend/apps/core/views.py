@@ -185,6 +185,7 @@ def admin_invoices_view(request):
     
     pending_invoices = []
     authorized_invoices = []
+    voided_invoices = []
     
     if company:
         # Documentos en proceso o con error
@@ -199,10 +200,17 @@ def admin_invoices_view(request):
             status='AUTHORIZED'
         ).select_related('created_by').order_by('-created_at')
 
+        # Documentos anulados
+        voided_invoices = ElectronicDocument.objects.filter(
+            company=company,
+            status='VOIDED'
+        ).select_related('created_by').prefetch_related('credit_notes').order_by('-created_at')
+
     context = {
         'company': company,
         'pending_invoices': pending_invoices,
         'authorized_invoices': authorized_invoices,
+        'voided_invoices': voided_invoices,
         'user': request.user,
     }
     return render(request, 'admin/invoices.html', context)
@@ -228,6 +236,29 @@ def admin_retry_invoice(request, pk):
         messages.success(request, f"Procesamiento del comprobante {document.document_number} reiniciado.")
     else:
         messages.warning(request, f"El comprobante ya está en estado {document.status} y no requiere reintento.")
+        
+    return redirect('admin_invoices')
+
+@login_required
+@user_passes_test(is_admin)
+def admin_retry_credit_note(request, pk):
+    """Reintentar el procesamiento de una nota de crédito que falló o fue rechazada"""
+    from apps.sri_integration.models import CreditNote
+    from apps.sri_integration.tasks import process_document_async
+    
+    companies = get_user_companies_secure(request.user)
+    cn = get_object_or_404(CreditNote, pk=pk, company__in=companies)
+    
+    # Solo reintentar si está en estado que lo permita
+    if cn.status in ['ERROR', 'REJECTED', 'GENERATED', 'SIGNED']:
+        cn.status = 'GENERATED'
+        cn.save()
+        
+        # Encolar tarea asíncrona especificando el tipo de modelo
+        process_document_async.delay(cn.id, model_type='CreditNote')
+        messages.success(request, f"Procesamiento de la nota de crédito {cn.document_number} reiniciado.")
+    else:
+        messages.warning(request, f"La nota de crédito ya está en estado {cn.status} y no requiere reintento.")
         
     return redirect('admin_invoices')
 
@@ -272,6 +303,10 @@ def admin_annul_invoice(request, pk):
             
             # Encolar procesamiento asíncrono de la Nota de Crédito
             transaction.on_commit(lambda: process_document_async.delay(credit_note.id, model_type='CreditNote'))
+            
+            # Marcar la factura original como ANULADA
+            invoice.status = 'VOIDED'
+            invoice.save()
             
             # DEVOLVER STOCK A INVENTARIO (NUEVO)
             items = invoice.additional_data.get('pos_items', [])

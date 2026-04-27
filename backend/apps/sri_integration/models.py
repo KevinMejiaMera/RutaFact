@@ -606,6 +606,7 @@ class ElectronicDocument(BaseModel):
         ('AUTHORIZED', _('Authorized')),
         ('REJECTED', _('Rejected')),
         ('ERROR', _('Error')),
+        ('VOIDED', _('Voided')),
     ]
     
     company = models.ForeignKey(
@@ -1350,6 +1351,9 @@ class CreditNote(BaseModel):
     # SRI response
     sri_authorization_code = models.CharField(_('SRI authorization code'), max_length=49, blank=True)
     sri_authorization_date = models.DateTimeField(_('SRI authorization date'), null=True, blank=True)
+    sri_response = models.JSONField(_('SRI response'), default=dict, blank=True)
+    email_sent = models.BooleanField(_('email sent'), default=False)
+    email_sent_date = models.DateTimeField(_('email sent date'), null=True, blank=True)
     
     @property
     def document_type(self):
@@ -1544,6 +1548,9 @@ class DebitNote(BaseModel):
     # SRI response
     sri_authorization_code = models.CharField(_('SRI authorization code'), max_length=49, blank=True)
     sri_authorization_date = models.DateTimeField(_('SRI authorization date'), null=True, blank=True)
+    sri_response = models.JSONField(_('SRI response'), default=dict, blank=True)
+    email_sent = models.BooleanField(_('email sent'), default=False)
+    email_sent_date = models.DateTimeField(_('email sent date'), null=True, blank=True)
     
     @property
     def document_type(self):
@@ -1663,6 +1670,9 @@ class Retention(BaseModel):
     # SRI response
     sri_authorization_code = models.CharField(_('SRI authorization code'), max_length=49, blank=True)
     sri_authorization_date = models.DateTimeField(_('SRI authorization date'), null=True, blank=True)
+    sri_response = models.JSONField(_('SRI response'), default=dict, blank=True)
+    email_sent = models.BooleanField(_('email sent'), default=False)
+    email_sent_date = models.DateTimeField(_('email sent date'), null=True, blank=True)
     
     class Meta:
         verbose_name = _('Retention')
@@ -1796,6 +1806,9 @@ class PurchaseSettlement(BaseModel):
     # SRI response
     sri_authorization_code = models.CharField(_('SRI authorization code'), max_length=49, blank=True)
     sri_authorization_date = models.DateTimeField(_('SRI authorization date'), null=True, blank=True)
+    sri_response = models.JSONField(_('SRI response'), default=dict, blank=True)
+    email_sent = models.BooleanField(_('email sent'), default=False)
+    email_sent_date = models.DateTimeField(_('email sent date'), null=True, blank=True)
     
     class Meta:
         verbose_name = _('Purchase Settlement')

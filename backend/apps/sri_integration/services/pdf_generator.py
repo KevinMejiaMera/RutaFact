@@ -282,11 +282,32 @@ class PDFGenerator:
         Construye información del documento modificado (para NC/ND)
         """
         elements = []
-        if hasattr(self.document, 'modified_document_number') and self.document.modified_document_number:
+        
+        # Caso 1: Modelo CreditNote (relación original_document)
+        if hasattr(self.document, 'original_document') and self.document.original_document:
+            elements.append(Paragraph("DOCUMENTO MODIFICADO", self.styles['SectionTitle']))
+            
+            orig = self.document.original_document
+            data = [
+                [f"Comprobante Modificado (Factura):", orig.document_number],
+                ["Fecha Emisión (Sustento):", orig.issue_date.strftime('%d/%m/%Y')],
+                ["Razón de Modificación:", getattr(self.document, 'reason_description', '')]
+            ]
+            
+            table = Table(data, colWidths=[2.5*inch, 3*inch])
+            table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ]))
+            elements.append(table)
+            
+        # Caso 2: Modelo ElectronicDocument unificado (campos directos)
+        elif hasattr(self.document, 'modified_document_number') and self.document.modified_document_number:
             elements.append(Paragraph("DOCUMENTO MODIFICADO", self.styles['SectionTitle']))
             
             data = [
-                [f"Comprobante Modificado ({self.document.get_modified_document_type_display()}):", self.document.modified_document_number],
+                [f"Comprobante Modificado ({getattr(self.document, 'get_modified_document_type_display', lambda: 'Documento')()}):", self.document.modified_document_number],
                 ["Fecha Emisión (Sustento):", self.document.modified_document_date.strftime('%d/%m/%Y') if self.document.modified_document_date else ""],
                 ["Razón de Modificación:", getattr(self.document, 'modification_reason', '')]
             ]
@@ -298,7 +319,8 @@ class PDFGenerator:
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ]))
             elements.append(table)
-            elements.append(Spacer(1, 5*mm))
+            
+        elements.append(Spacer(1, 5*mm))
         return elements
 
     def _build_debit_note_reasons(self):
@@ -409,7 +431,7 @@ class PDFGenerator:
         # Info Box (RUC, Factura, Autorización, etc)
         doc_info_data = [
             [Paragraph(f"<b>R.U.C.:</b> {self.company.ruc}", self.styles['CompanyTitle'])],
-            [Paragraph(self.document.get_document_type_display().upper(), self.styles['CompanyTitle'])],
+            [Paragraph(getattr(self.document, 'get_document_type_display', lambda: 'NOTA DE CRÉDITO')().upper(), self.styles['CompanyTitle'])],
             [Paragraph(f"No. {self.document.document_number}", self.styles['ValueStyle'])],
             [Paragraph("NÚMERO DE AUTORIZACIÓN", self.styles['LabelStyle'])],
             [Paragraph(self.document.sri_authorization_code or "PENDIENTE", self.styles['ValueStyle'])],
@@ -511,12 +533,24 @@ class PDFGenerator:
         
         table_data = [headers]
         
-        # Obtener items de la relación directa
-        items = list(self.document.items.all())
+        # Obtener items de forma segura
+        items = []
+        doc_add_data = getattr(self.document, 'additional_data', None)
+        
+        if hasattr(self.document, 'items'):
+            items = list(self.document.items.all())
+        elif hasattr(self.document, 'original_document') and self.document.original_document:
+            # Si es Nota de Crédito, usar items de la factura original
+            if hasattr(self.document.original_document, 'items'):
+                items = list(self.document.original_document.items.all())
+            
+            # Obtener additional_data de la factura original si la nota de crédito no tiene
+            if not doc_add_data:
+                doc_add_data = getattr(self.document.original_document, 'additional_data', None)
         
         # Si no hay items en la relación, buscar en additional_data (pos_items)
-        if not items and self.document.additional_data and 'pos_items' in self.document.additional_data:
-            pos_items = self.document.additional_data['pos_items']
+        if not items and doc_add_data and 'pos_items' in doc_add_data:
+            pos_items = doc_add_data['pos_items']
             if isinstance(pos_items, list):
                 for pi in pos_items:
                     # Mapear campos del JSON a lo esperado por el PDF
@@ -585,9 +619,10 @@ class PDFGenerator:
         left_side = []
         
         # 1. Info Adicional
-        if self.document.additional_data:
+        doc_add_data = getattr(self.document, 'additional_data', None)
+        if doc_add_data:
             add_data = [[Paragraph("Información Adicional", self.styles['LabelStyle'])]]
-            for key, value in self.document.additional_data.items():
+            for key, value in doc_add_data.items():
                 # OMITIR pos_items de la visualización de info adicional ya que se muestra en la tabla
                 if key == 'pos_items':
                     continue
@@ -619,9 +654,9 @@ class PDFGenerator:
             [Paragraph("Forma de Pago", self.styles['LabelStyle']), Paragraph("Valor", self.styles['LabelStyle'])]
         ]
         
-        payments = self.document.payment_methods.all()
-        if payments.exists():
-            for p in payments:
+        payments = getattr(self.document, 'payment_methods', None)
+        if payments and payments.exists():
+            for p in payments.all():
                 name = PAYMENT_NAMES.get(p.payment_method_code, 'OTROS CON UTILIZACION DEL SISTEMA FINANCIERO')
                 payment_data.append([
                     Paragraph(name, self.styles['ValueStyle']), 
@@ -630,8 +665,9 @@ class PDFGenerator:
         else:
             # Fallback a additional_data o default
             payment_method = "SIN UTILIZACION DEL SISTEMA FINANCIERO"
-            if self.document.additional_data and 'Forma de Pago' in self.document.additional_data:
-                 payment_method = self.document.additional_data['Forma de Pago']
+            doc_add_data = getattr(self.document, 'additional_data', None)
+            if doc_add_data and 'Forma de Pago' in doc_add_data:
+                 payment_method = doc_add_data['Forma de Pago']
             
             payment_data.append([
                 Paragraph(payment_method, self.styles['ValueStyle']), 
@@ -656,7 +692,7 @@ class PDFGenerator:
         subtotal_exento = Decimal('0.00')
         iva_15 = Decimal('0.00')
         
-        for tax in self.document.taxes.all():
+        for tax in getattr(self.document, 'taxes', []).all() if getattr(self.document, 'taxes', None) else []:
             if tax.tax_code == '2': # IVA
                 if tax.percentage_code == '0':
                     subtotal_0 += tax.taxable_base
@@ -669,8 +705,12 @@ class PDFGenerator:
                     subtotal_exento += tax.taxable_base
         
         # Si no hay impuestos (ej. borrador), usar subtotal general
-        if not self.document.taxes.exists():
+        doc_taxes = getattr(self.document, 'taxes', None)
+        if not doc_taxes or not doc_taxes.exists():
             subtotal_15 = self.document.subtotal_without_tax
+            iva_15 = getattr(self.document, 'total_tax', Decimal('0.00'))
+
+        doc_discount = getattr(self.document, 'total_discount', Decimal('0.00'))
 
         totals_data = [
             [Paragraph("SUBTOTAL 15%", self.styles['TotalLabel']), Paragraph(f"{subtotal_15:.2f}", self.styles['TotalValue'])],
@@ -678,7 +718,7 @@ class PDFGenerator:
             [Paragraph("SUBTOTAL NO OBJETO DE IVA", self.styles['TotalLabel']), Paragraph(f"{subtotal_no_objeto:.2f}", self.styles['TotalValue'])],
             [Paragraph("SUBTOTAL EXENTO DE IVA", self.styles['TotalLabel']), Paragraph(f"{subtotal_exento:.2f}", self.styles['TotalValue'])],
             [Paragraph("SUBTOTAL SIN IMPUESTOS", self.styles['TotalLabel']), Paragraph(f"{self.document.subtotal_without_tax:.2f}", self.styles['TotalValue'])],
-            [Paragraph("TOTAL DESCUENTO", self.styles['TotalLabel']), Paragraph(f"{self.document.total_discount:.2f}", self.styles['TotalValue'])],
+            [Paragraph("TOTAL DESCUENTO", self.styles['TotalLabel']), Paragraph(f"{doc_discount:.2f}", self.styles['TotalValue'])],
             [Paragraph("ICE", self.styles['TotalLabel']), Paragraph("0.00", self.styles['TotalValue'])],
             [Paragraph("IRBPNR", self.styles['TotalLabel']), Paragraph("0.00", self.styles['TotalValue'])],
             [Paragraph("IVA 15%", self.styles['TotalLabel']), Paragraph(f"{iva_15:.2f}", self.styles['TotalValue'])],

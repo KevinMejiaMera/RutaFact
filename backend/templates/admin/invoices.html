@@ -211,83 +211,162 @@
         <!-- ÁREA PRINCIPAL: Historial de Autorizados -->
         <div class="main-area">
             <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
-                    <h3 style="color: white; font-size: 18px; display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-check-double" style="color: #00c853;"></i> Historial de Comprobantes Autorizados
-                    </h3>
-                    <div style="display: flex; gap: 10px;">
-                        <!-- Filtros rápidos si fueran necesarios -->
-                    </div>
+                <div class="tabs-header">
+                    <button class="tab-btn active" onclick="switchTab('authorized')">Autorizados ({{ authorized_invoices|length }})</button>
+                    <button class="tab-btn" onclick="switchTab('voided')">Anulados ({{ voided_invoices|length }})</button>
                 </div>
                 
-                <div class="table-container">
-                    <table class="invoice-table">
-                        <thead>
-                            <tr>
-                                <th>Fecha</th>
-                                <th>Número / Tipo</th>
-                                <th>Cliente</th>
-                                <th>Total</th>
-                                <th>Estado</th>
-                                <th style="text-align: right;">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for invoice in authorized_invoices %}
-                            <tr>
-                                <td>{{ invoice.issue_date|date:"d/m/Y" }}</td>
-                                <td>
-                                    <div style="color: white; font-weight: 600;">{{ invoice.document_number }}</div>
-                                    <div style="font-size: 10px; color: var(--text-dim);">{{ invoice.get_document_type_display }}</div>
-                                </td>
-                                <td>
-                                    <div style="color: white; font-weight: 500;">{{ invoice.customer_name }}</div>
-                                    <div style="font-size: 10px; color: var(--text-dim);">{{ invoice.customer_identification }}</div>
-                                </td>
-                                <td style="color: white; font-weight: 600;">${{ invoice.total_amount|floatformat:2 }}</td>
-                                <td>
-                                    <span class="status-pill status-authorized"><i class="fas fa-check-circle"></i> Autorizado</span>
-                                </td>
-                                <td style="text-align: right;">
-                                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                                        <button class="action-btn" onclick="showInvoiceDetails({{ invoice.id }})" title="Ver Detalles"><i class="fas fa-eye"></i></button>
+                <!-- TAB: AUTORIZADOS -->
+                <div id="tab-authorized" class="tab-content active">
+                    <div class="table-container">
+                        <table class="invoice-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Número / Tipo</th>
+                                    <th>Cliente</th>
+                                    <th>Total</th>
+                                    <th>Estado</th>
+                                    <th style="text-align: right;">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for invoice in authorized_invoices %}
+                                <tr>
+                                    <td>{{ invoice.issue_date|date:"d/m/Y" }}</td>
+                                    <td>
+                                        <div style="color: white; font-weight: 600;">{{ invoice.document_number }}</div>
+                                        <div style="font-size: 10px; color: var(--text-dim);">{{ invoice.get_document_type_display }}</div>
+                                    </td>
+                                    <td>
+                                        <div style="color: white; font-weight: 500;">{{ invoice.customer_name }}</div>
+                                        <div style="font-size: 10px; color: var(--text-dim);">{{ invoice.customer_identification }}</div>
+                                    </td>
+                                    <td style="color: white; font-weight: 600;">${{ invoice.total_amount|floatformat:2 }}</td>
+                                    <td>
+                                        <span class="status-pill status-authorized"><i class="fas fa-check-circle"></i> Autorizado</span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                            <button class="action-btn" onclick="showInvoiceDetails({{ invoice.id }})" title="Ver Detalles"><i class="fas fa-eye"></i></button>
 
-                                        {# Botón PDF — siempre visible, genera el PDF en el momento si no existe #}
-                                        <button
-                                            class="btn-download-pdf"
-                                            id="pdf-btn-{{ invoice.id }}"
-                                            onclick="downloadPdf({{ invoice.id }}, this)"
-                                            title="Descargar PDF RIDE">
-                                            <i class="fas fa-file-pdf pdf-icon"></i>
-                                            <span class="btn-text">Descargar</span>
-                                            <span class="spinner"></span>
-                                        </button>
+                                            <button
+                                                class="btn-download-pdf"
+                                                id="pdf-btn-{{ invoice.id }}"
+                                                onclick="downloadPdf({{ invoice.id }}, this)"
+                                                title="Descargar PDF RIDE">
+                                                <i class="fas fa-file-pdf pdf-icon"></i>
+                                                <span class="btn-text">Descargar</span>
+                                                <span class="spinner"></span>
+                                            </button>
 
-                                        {% if invoice.signed_xml_file %}
-                                        <a href="{{ invoice.signed_xml_file.url }}" class="action-btn" title="Descargar XML" target="_blank">
-                                            <i class="fas fa-file-code" style="color: var(--primary);"></i>
-                                        </a>
-                                        {% endif %}
-                                        {% if invoice.status == 'AUTHORIZED' %}
-                                        <a href="{% url 'admin_annul_invoice' invoice.id %}" class="action-btn" title="Anular Factura (Nota Crédito)"
-                                           onclick="return confirm('¿Estás seguro de que deseas anular esta factura? Se generará una Nota de Crédito automáticamente.')"
-                                           style="color: #ff8a80;">
-                                            <i class="fas fa-ban"></i>
-                                        </a>
-                                        {% endif %}
-                                    </div>
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="6" style="text-align: center; padding: 80px; color: var(--text-dim);">
-                                    <i class="fas fa-file-invoice fa-4x" style="margin-bottom: 20px; opacity: 0.1;"></i>
-                                    <p>No hay comprobantes autorizados aún.</p>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                            {% if invoice.signed_xml_file %}
+                                            <a href="{{ invoice.signed_xml_file.url }}" class="action-btn" title="Descargar XML" target="_blank">
+                                                <i class="fas fa-file-code" style="color: var(--primary);"></i>
+                                            </a>
+                                            {% endif %}
+                                            <a href="{% url 'admin_annul_invoice' invoice.id %}" class="action-btn" title="Anular Factura (Nota Crédito)"
+                                               onclick="return confirm('¿Estás seguro de que deseas anular esta factura? Se generará una Nota de Crédito automáticamente.')"
+                                               style="color: #ff8a80;">
+                                                <i class="fas fa-ban"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" style="text-align: center; padding: 80px; color: var(--text-dim);">
+                                        <i class="fas fa-file-invoice fa-4x" style="margin-bottom: 20px; opacity: 0.1;"></i>
+                                        <p>No hay comprobantes autorizados aún.</p>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- TAB: ANULADOS -->
+                <div id="tab-voided" class="tab-content">
+                    <div class="table-container">
+                        <table class="invoice-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Número / Tipo</th>
+                                    <th>Cliente</th>
+                                    <th>Total</th>
+                                    <th>Estado</th>
+                                    <th style="text-align: right;">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for invoice in voided_invoices %}
+                                <tr>
+                                    <td>{{ invoice.issue_date|date:"d/m/Y" }}</td>
+                                    <td>
+                                        <div style="color: white; font-weight: 600;">{{ invoice.document_number }}</div>
+                                        <div style="font-size: 10px; color: var(--text-dim);">{{ invoice.get_document_type_display }}</div>
+                                    </td>
+                                    <td>
+                                        <div style="color: white; font-weight: 500;">{{ invoice.customer_name }}</div>
+                                        <div style="font-size: 10px; color: var(--text-dim);">{{ invoice.customer_identification }}</div>
+                                    </td>
+                                    <td style="color: white; font-weight: 600;">${{ invoice.total_amount|floatformat:2 }}</td>
+                                    <td>
+                                        <span class="status-pill status-voided"><i class="fas fa-ban"></i> Anulado</span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                            <button class="action-btn" onclick="showInvoiceDetails({{ invoice.id }})" title="Ver Detalles"><i class="fas fa-eye"></i></button>
+                                            
+                                            <div style="font-size: 11px; display: flex; flex-direction: column; gap: 4px;">
+                                                {% with cn=invoice.credit_notes.first %}
+                                                    {% if cn %}
+                                                        <div style="display: flex; align-items: center; gap: 5px; color: {% if cn.status == 'AUTHORIZED' %}#4CAF50{% elif cn.status == 'ERROR' or cn.status == 'REJECTED' %}#ff5252{% else %}var(--text-dim){% endif %};">
+                                                            {% if cn.status == 'AUTHORIZED' %}
+                                                                <i class="fas fa-check-circle"></i>
+                                                                <span>Nota de Crédito Autorizada</span>
+                                                                <a href="{{ cn.pdf_file.url }}" class="btn-download-pdf" style="height: 24px; padding: 0 8px; font-size: 10px; margin-left: 5px;" target="_blank">
+                                                                    <i class="fas fa-file-pdf"></i> PDF
+                                                                </a>
+                                                            {% elif cn.status == 'ERROR' or cn.status == 'REJECTED' %}
+                                                                <i class="fas fa-exclamation-circle"></i>
+                                                                <span>Error en Nota de Crédito</span>
+                                                                <a href="{% url 'admin_retry_credit_note' cn.id %}" style="color: var(--primary); margin-left: 5px;" title="Reintentar">
+                                                                    <i class="fas fa-redo-alt"></i>
+                                                                </a>
+                                                            {% else %}
+                                                                <i class="fas fa-spinner fa-spin"></i>
+                                                                <span>Nota de Crédito en proceso ({{ cn.get_status_display }})</span>
+                                                            {% endif %}
+                                                        </div>
+                                                        {% if cn.sri_response and cn.status == 'ERROR' %}
+                                                            <div style="font-size: 9px; color: #ff8a80; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ cn.sri_response.mensaje }}">
+                                                                {{ cn.sri_response.mensaje }}
+                                                            </div>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        <div style="color: var(--text-dim); display: flex; align-items: center; gap: 5px;">
+                                                            <i class="fas fa-hourglass-half"></i> Pendiente de Nota de Crédito
+                                                        </div>
+                                                    {% endif %}
+                                                {% endwith %}
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" style="text-align: center; padding: 80px; color: var(--text-dim);">
+                                        <i class="fas fa-ban fa-4x" style="margin-bottom: 20px; opacity: 0.1;"></i>
+                                        <p>No hay comprobantes anulados.</p>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -379,6 +458,22 @@
 </div>
 
 <script>
+    function switchTab(tabName) {
+        // Ocultar todos los contenidos
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        
+        // Desactivar todos los botones
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Activar el seleccionado
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+        event.currentTarget.classList.add('active');
+    }
+
     async function showInvoiceDetails(id) {
         const modal = document.getElementById('invoiceDetailModal');
         const body = document.getElementById('modalBody');

@@ -47,6 +47,7 @@ urlpatterns = [
     path('dashboard/customers/add_ajax/', core_views.admin_add_customer_ajax, name='admin_add_customer_ajax'),
     path('dashboard/invoices/', core_views.admin_invoices_view, name='admin_invoices'),
     path('dashboard/invoices/<int:pk>/retry/', core_views.admin_retry_invoice, name='admin_retry_invoice'),
+    path('dashboard/credit-notes/<int:pk>/retry/', core_views.admin_retry_credit_note, name='admin_retry_credit_note'),
     path('dashboard/invoices/<int:pk>/annul/', core_views.admin_annul_invoice, name='admin_annul_invoice'),
     path('dashboard/suppliers/', core_views.admin_providers_view, name='admin_suppliers'),
     path('dashboard/suppliers/<int:provider_id>/edit/', core_views.admin_edit_provider, name='admin_edit_provider'),

@@ -24,28 +24,39 @@ from apps.core.websockets_utils import send_queue_update
 logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=5, default_retry_delay=120)
-def check_document_authorization_async(self, document_id):
+def check_document_authorization_async(self, document_id, model_type='ElectronicDocument'):
     """
     ✅ TAREA PRINCIPAL: Verificar autorización de documento automáticamente
     """
     try:
-        document = ElectronicDocument.objects.get(id=document_id)
-        company_id = document.company.id
+        from .models import ElectronicDocument, CreditNote, DebitNote, Retention, PurchaseSettlement
         
-        logger.info(f"🔄 [CELERY] Checking authorization for document {document_id} [Company: {company_id}]")
-        send_queue_update(company_id, document_id, 'PROCESSING', "Verificando autorización en SRI...")
+        models_map = {
+            'ElectronicDocument': ElectronicDocument,
+            'CreditNote': CreditNote,
+            'DebitNote': DebitNote,
+            'Retention': Retention,
+            'PurchaseSettlement': PurchaseSettlement,
+        }
+        
+        ModelClass = models_map.get(model_type, ElectronicDocument)
+        
+        logger.info(f"🔄 [CELERY] Checking authorization for {model_type} {document_id}")
         
         # Obtener documento con lock para evitar condiciones de carrera
         try:
             with transaction.atomic():
-                document = ElectronicDocument.objects.select_for_update().get(id=document_id)
-        except ElectronicDocument.DoesNotExist:
-            logger.error(f"❌ [CELERY] Document {document_id} not found")
+                document = ModelClass.objects.select_for_update().get(id=document_id)
+        except ModelClass.DoesNotExist:
+            logger.error(f"❌ [CELERY] {model_type} {document_id} not found")
             return False
+        
+        company_id = document.company.id
+        send_queue_update(company_id, document_id, 'PROCESSING', "Verificando autorización en SRI...")
         
         # Solo procesar si está en SENT
         if document.status != 'SENT':
-            logger.info(f"ℹ️ [CELERY] Document {document_id} status is {document.status}, skipping")
+            logger.info(f"ℹ️ [CELERY] {model_type} {document_id} status is {document.status}, skipping")
             if document.status == 'AUTHORIZED':
                 return True  # Ya está autorizado
             return False  # Otro estado, no procesar más
@@ -53,7 +64,7 @@ def check_document_authorization_async(self, document_id):
         # Verificar que no haya pasado demasiado tiempo
         time_elapsed = timezone.now() - document.created_at
         if time_elapsed.total_seconds() > 86400:  # 24 horas
-            logger.warning(f"⏰ [CELERY] Document {document_id} timeout after 24 hours")
+            logger.warning(f"⏰ [CELERY] {model_type} {document_id} timeout after 24 hours")
             return False
         
         # Verificar autorización en el SRI
@@ -61,19 +72,19 @@ def check_document_authorization_async(self, document_id):
         success, message = sri_client.get_document_authorization(document)
         
         if success:
-            logger.info(f"🎉 [CELERY] Document {document_id} AUTHORIZED: {document.sri_authorization_code}")
+            logger.info(f"🎉 [CELERY] {model_type} {document_id} AUTHORIZED: {document.sri_authorization_code}")
             
             # Enviar email si está configurado y es exitoso
             try:
-                if document.company.sri_configuration.email_enabled:
-                    send_authorization_notification_email.delay(document_id)
+                if hasattr(document.company, 'sri_configuration') and document.company.sri_configuration.email_enabled:
+                    send_authorization_notification_email.delay(document_id, model_type=model_type)
             except Exception as email_error:
-                logger.warning(f"⚠️ [CELERY] Email notification failed for document {document_id}: {email_error}")
+                logger.warning(f"⚠️ [CELERY] Email notification failed for {model_type} {document_id}: {email_error}")
             
             return True
         else:
             # Si aún no está autorizado, programar reintento
-            logger.info(f"⏳ [CELERY] Document {document_id} still pending: {message}")
+            logger.info(f"⏳ [CELERY] {model_type} {document_id} still pending: {message}")
             
             # Calcular tiempo de reintento con backoff exponencial
             retry_count = self.request.retries
@@ -89,7 +100,9 @@ def check_document_authorization_async(self, document_id):
             raise self.retry(countdown=countdown)
     
     except Exception as e:
-        logger.error(f"❌ [CELERY] Error checking authorization for {document_id}: {e}")
+        if isinstance(e, self.Retry):
+            raise e
+        logger.error(f"❌ [CELERY] Error checking authorization for {model_type} {document_id}: {e}")
         
         # Reintentar en caso de error con backoff exponencial
         if self.request.retries < self.max_retries:
@@ -97,10 +110,10 @@ def check_document_authorization_async(self, document_id):
             logger.info(f"🔄 [CELERY] Retrying due to error in {countdown} seconds...")
             raise self.retry(countdown=countdown)
         else:
-            logger.error(f"❌ [CELERY] Max retries exceeded for authorization check of document {document_id}")
+            logger.error(f"❌ [CELERY] Max retries exceeded for authorization check of {model_type} {document_id}")
             # Si excedemos reintentos de autorización, marcamos como ERROR para que no bloquee para siempre
             try:
-                document = ElectronicDocument.objects.get(id=document_id)
+                document = ModelClass.objects.get(id=document_id)
                 if document.status == 'SENT':
                     document.status = 'ERROR'
                     document.save(update_fields=['status'])
@@ -113,38 +126,50 @@ def check_document_authorization_async(self, document_id):
 def process_document_async(self, document_id, model_type='ElectronicDocument'):
     """
     ✅ TAREA: Procesar documento completo en background (Cola aislada por empresa)
-    model_type puede ser 'ElectronicDocument' o 'CreditNote'
+    model_type puede ser 'ElectronicDocument', 'CreditNote', 'DebitNote', 'Retention', 'PurchaseSettlement'
     """
     lock_id = None
     try:
-        if model_type == 'CreditNote':
-            document = CreditNote.objects.get(id=document_id)
-        else:
-            document = ElectronicDocument.objects.get(id=document_id)
-            
+        from .models import ElectronicDocument, CreditNote, DebitNote, Retention, PurchaseSettlement
+        
+        models_map = {
+            'ElectronicDocument': ElectronicDocument,
+            'CreditNote': CreditNote,
+            'DebitNote': DebitNote,
+            'Retention': Retention,
+            'PurchaseSettlement': PurchaseSettlement,
+        }
+        
+        ModelClass = models_map.get(model_type, ElectronicDocument)
+        
+        try:
+            document = ModelClass.objects.get(id=document_id)
+        except ModelClass.DoesNotExist:
+            logger.error(f"❌ [CELERY] {model_type} {document_id} not found")
+            return {'success': False, 'error': f'{model_type} not found'}
+
         company_id = document.company.id
         
         # Lock por empresa (Carril dinámico para FIRMA/ENVIO)
-        # Solo bloqueamos el ENVIO para evitar errores de secuencia en el SRI
         lock_id = f"sri_lock_sign_{company_id}"
         
         # Intentar obtener el candado. Si está ocupado por otra firma de la misma empresa, esperar turno.
-        # Aumentamos timeout a 10 min (600s) para permitir el ciclo completo de reintentos internos
         if not cache.add(lock_id, "locked", timeout=600):
-            logger.info(f"⏳ [CELERY] Signing lock for Company {company_id} is busy. Document {document_id} waiting its turn...")
+            logger.info(f"⏳ [CELERY] Signing lock for Company {company_id} is busy. {model_type} {document_id} waiting its turn...")
             send_queue_update(company_id, document_id, 'WAITING', "En espera (otra factura en proceso)...")
-            self.retry(countdown=5)
+            raise self.retry(countdown=5)
             
-        logger.info(f"🚀 [CELERY] Initializing isolated processing for Company {company_id} | Doc {document_id}")
+        logger.info(f"🚀 [CELERY] Initializing isolated processing for Company {company_id} | {model_type} {document_id}")
         
         processor = DocumentProcessor(document.company)
         success, message = processor.process_document(document)
         
         if success and document.status == 'SENT':
             # Programar verificación de autorización automática
-            logger.info(f"📅 [CELERY] Document sent. Scheduling auth follow-up for doc {document_id}")
+            logger.info(f"📅 [CELERY] Document sent. Scheduling auth follow-up for {model_type} {document_id}")
             check_document_authorization_async.apply_async(
                 args=[document_id], 
+                kwargs={'model_type': model_type},
                 countdown=120  # 2 minutos
             )
         
@@ -153,19 +178,27 @@ def process_document_async(self, document_id, model_type='ElectronicDocument'):
             'success': success, 
             'message': message,
             'document_id': document_id,
+            'model_type': model_type,
             'status': document.status,
             'company_id': company_id
         }
         
-    except ElectronicDocument.DoesNotExist:
-        logger.error(f"❌ [CELERY] Document {document_id} not found")
-        return {'success': False, 'error': 'Document not found'}
-        
     except Exception as e:
-        logger.exception(f"💥 [CELERY] Critical error processing document {document_id}: {str(e)}")
+        if isinstance(e, self.Retry):
+            raise e
+        logger.exception(f"💥 [CELERY] Critical error processing {model_type} {document_id}: {str(e)}")
         # Marcar como ERROR definitivo para que la cola avance
         try:
-            doc = ElectronicDocument.objects.get(id=document_id)
+            from .models import ElectronicDocument, CreditNote, DebitNote, Retention, PurchaseSettlement
+            models_map = {
+                'ElectronicDocument': ElectronicDocument,
+                'CreditNote': CreditNote,
+                'DebitNote': DebitNote,
+                'Retention': Retention,
+                'PurchaseSettlement': PurchaseSettlement,
+            }
+            ModelClass = models_map.get(model_type, ElectronicDocument)
+            doc = ModelClass.objects.get(id=document_id)
             doc.status = 'ERROR'
             doc.save(update_fields=['status'])
             send_queue_update(doc.company.id, document_id, 'ERROR', f"Falla crítica: {str(e)[:100]}")
@@ -257,28 +290,37 @@ def cleanup_old_sri_responses():
         return {'error': str(e)}
 
 @shared_task(bind=True, max_retries=5, default_retry_delay=300)
-def send_authorization_notification_email(self, document_id):
+def send_authorization_notification_email(self, document_id, model_type='ElectronicDocument'):
     """
     ✅ TAREA: Enviar notificación por email cuando un documento es autorizado
-    
-    Args:
-        document_id (int): ID del documento autorizado
     """
     try:
-        logger.info(f"📧 [CELERY_EMAIL] Sending authorization notification for document {document_id}")
+        from .models import ElectronicDocument, CreditNote, DebitNote, Retention, PurchaseSettlement
         
-        document = ElectronicDocument.objects.select_related('company__sri_configuration').get(id=document_id)
+        models_map = {
+            'ElectronicDocument': ElectronicDocument,
+            'CreditNote': CreditNote,
+            'DebitNote': DebitNote,
+            'Retention': Retention,
+            'PurchaseSettlement': PurchaseSettlement,
+        }
+        
+        ModelClass = models_map.get(model_type, ElectronicDocument)
+        
+        logger.info(f"📧 [CELERY_EMAIL] Sending authorization notification for {model_type} {document_id}")
+        
+        document = ModelClass.objects.select_related('company__sri_configuration').get(id=document_id)
         
         # 🛡️ RESTRICCIÓN SOLICITADA: No enviar correos en ambiente de desarrollo/pruebas
         sri_config = getattr(document.company, 'sri_configuration', None)
         env = getattr(sri_config, 'environment', 'TEST')
         
         if env != 'PRODUCTION':
-            logger.info(f"🚫 [CELERY_EMAIL] Skipping email for document {document_id} because environment is {env}")
+            logger.info(f"🚫 [CELERY_EMAIL] Skipping email for {model_type} {document_id} because environment is {env}")
             return {'sent': False, 'reason': f'Environment is {env}, not PRODUCTION'}
 
         if document.status != 'AUTHORIZED':
-            logger.warning(f"⚠️ [CELERY_EMAIL] Document {document_id} is not authorized (Status: {document.status}), skipping email")
+            logger.warning(f"⚠️ [CELERY_EMAIL] {model_type} {document_id} is not authorized (Status: {document.status}), skipping email")
             return {'sent': False, 'reason': f'Document status is {document.status}'}
         
         # Importar EmailService aquí para evitar import circular
@@ -288,37 +330,37 @@ def send_authorization_notification_email(self, document_id):
         success, message = email_service.send_authorization_notification(document)
         
         if success:
-            logger.info(f"✅ [CELERY_EMAIL] Authorization notification sent for document {document_id}")
+            logger.info(f"✅ [CELERY_EMAIL] Authorization notification sent for {model_type} {document_id}")
             
             # Actualizar documento para marcar que se envió el email
             document.email_sent = True
             document.email_sent_date = timezone.now()
             document.save(update_fields=['email_sent', 'email_sent_date'])
         else:
-            logger.error(f"❌ [CELERY_EMAIL] Failed to send notification for document {document_id}: {message}")
+            logger.error(f"❌ [CELERY_EMAIL] Failed to send notification for {model_type} {document_id}: {message}")
             # Reintentar si falló el envío (SMTP error, etc)
             raise self.retry(exc=Exception(message))
         
         return {
             'sent': success,
             'message': message,
-            'document_id': document_id
+            'document_id': document_id,
+            'model_type': model_type
         }
         
-    except ElectronicDocument.DoesNotExist:
-        error_msg = f"Document {document_id} not found for email notification"
+    except ModelClass.DoesNotExist:
+        error_msg = f"{model_type} {document_id} not found for email notification"
         logger.error(f"❌ [CELERY_EMAIL] {error_msg}")
         return {'sent': False, 'error': error_msg}
     except Exception as e:
-        error_msg = f"Error sending email notification for document {document_id}: {e}"
+        if isinstance(e, self.Retry):
+            raise e
+        error_msg = f"Error sending email notification for {model_type} {document_id}: {e}"
         logger.error(f"❌ [CELERY_EMAIL] {error_msg}")
         
         # Reintentar en caso de error transitorio
-        if not isinstance(e, ElectronicDocument.DoesNotExist):
-            logger.info(f"🔄 [CELERY_EMAIL] Retrying email for document {document_id} in 300s...")
-            raise self.retry(exc=e)
-            
-        return {'sent': False, 'error': error_msg}
+        logger.info(f"🔄 [CELERY_EMAIL] Retrying email for {model_type} {document_id} in 300s...")
+        raise self.retry(exc=e)
 
 @shared_task
 def bulk_process_documents(document_ids):
