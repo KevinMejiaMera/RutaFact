@@ -223,18 +223,13 @@
 </div>
 
 <style>
-    :root {
-        --primary: #B08B90; /* Pastel Muted Rose */
-        --primary-light: rgba(176, 139, 144, 0.05);
-        --success: #9BB0A8; /* Pastel Muted Sage */
-        --danger: #9E767C;
-        --warning: #C4A484; /* Pastel Muted Amber */
-        --text-main: #DEDEDE;
-        --text-dim: #666666;
-        --bg-dark: #000000;
-        --bg-card: #080808;
-        --border: rgba(255, 255, 255, 0.05);
+    body {
+        --primary-light: rgba(var(--primary-rgb), 0.05);
         --shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+    }
+
+    body.light-mode {
+        --shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
     }
 
     .unified-config-container {
@@ -276,33 +271,33 @@
     .form-group { margin-bottom: 20px; }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
     label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .form-control { width: 100%; padding: 14px 18px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); border-radius: 12px; color: var(--text-main); font-size: 14px; transition: 0.3s; }
-    .form-control:focus { border-color: var(--primary); outline: none; background: rgba(255, 255, 255, 0.04); }
+    .form-control { width: 100%; padding: 14px 18px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 12px; color: var(--text-main); font-size: 14px; transition: 0.3s; }
+    .form-control:focus { border-color: var(--primary); outline: none; background: var(--bg-card); }
     .highlight-input { border-color: rgba(176, 139, 144, 0.2); font-weight: 700; color: var(--primary); font-size: 20px; letter-spacing: 3px; }
 
-    .btn-primary { background: var(--primary); color: #000; border: none; padding: 14px 28px; border-radius: 14px; font-weight: 700; cursor: pointer; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 10px; text-transform: uppercase; letter-spacing: 1px; font-size: 13px; }
+    .btn-primary { background: var(--primary); color: var(--bg-card); border: none; padding: 14px 28px; border-radius: 14px; font-weight: 700; cursor: pointer; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 10px; text-transform: uppercase; letter-spacing: 1px; font-size: 13px; }
     .btn-primary:hover { transform: translateY(-2px); background: #C4A484; }
     .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 14px 25px; border-radius: 14px; font-weight: 600; cursor: pointer; transition: 0.3s; font-size: 13px; }
     .btn-secondary:hover { background: rgba(255,255,255,0.03); }
     .btn-danger-outline { background: transparent; border: 1px solid var(--danger); color: var(--danger); padding: 12px; border-radius: 12px; cursor: pointer; transition: 0.3s; font-weight: 700; font-size: 12px; text-transform: uppercase; }
-    .btn-danger-outline:hover { background: var(--danger); color: #000; }
+    .btn-danger-outline:hover { background: var(--danger); color: white; }
 
-    .signature-active { background: rgba(255, 255, 255, 0.01); border: 1px solid var(--border); border-radius: 18px; padding: 25px; }
+    .signature-active { background: var(--bg-card); border: 1px solid var(--border); border-radius: 18px; padding: 25px; }
     .sig-status { display: flex; align-items: center; gap: 20px; margin-bottom: 25px; }
     .sig-icon { width: 50px; height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
     .sig-icon.success { background: rgba(155, 176, 168, 0.1); color: var(--success); }
     .sig-info h4 { font-size: 15px; margin: 0 0 5px 0; color: var(--text-main); }
     .sig-info p { font-size: 12px; color: var(--text-dim); margin: 0; }
     .sig-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-    .meta-item { background: rgba(255,255,255,0.01); padding: 12px; border-radius: 10px; border: 1px solid var(--border); }
+    .meta-item { background: var(--bg-dark); padding: 12px; border-radius: 10px; border: 1px solid var(--border); }
     .meta-item label { margin: 0 0 5px 0; font-size: 9px; }
     .meta-item span { font-weight: 700; font-size: 14px; color: var(--primary); }
     .mini-select { background: transparent; border: none; color: var(--text-main); font-weight: 700; width: 100%; cursor: pointer; font-size: 13px; outline: none; }
 
-    .alert-warning-mini { background: rgba(196, 164, 132, 0.05); border: 1px solid rgba(196, 164, 132, 0.1); color: var(--warning); padding: 12px; border-radius: 10px; font-size: 11px; margin-bottom: 20px; }
+    .alert-warning-mini { background: rgba(var(--primary-rgb), 0.05); border: 1px solid rgba(var(--primary-rgb), 0.1); color: var(--warning); padding: 12px; border-radius: 10px; font-size: 11px; margin-bottom: 20px; }
     .alert-info-mini { background: rgba(155, 176, 168, 0.05); border: 1px solid rgba(155, 176, 168, 0.1); color: var(--accent); padding: 12px; border-radius: 10px; font-size: 11px; }
 
-    .signature-upload { border: 2px dashed var(--border); background: rgba(255,255,255,0.01); padding: 50px 25px; border-radius: 20px; text-align: center; cursor: pointer; transition: 0.3s; }
+    .signature-upload { border: 2px dashed var(--border); background: var(--bg-card); padding: 50px 25px; border-radius: 20px; text-align: center; cursor: pointer; transition: 0.3s; }
     .signature-upload:hover { border-color: var(--primary); background: rgba(176, 139, 144, 0.03); }
     .upload-icon { font-size: 45px; color: var(--primary); margin-bottom: 20px; opacity: 0.6; }
 

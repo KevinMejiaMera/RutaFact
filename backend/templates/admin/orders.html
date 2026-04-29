@@ -14,8 +14,8 @@
 
     <!-- Pestañas para Pendientes / Completados -->
     <div style="display: flex; gap: 10px; margin-bottom: 25px;">
-        <button onclick="switchTab('pending')" id="tab-pending" class="btn-primary" style="background: var(--primary);">Pendientes ({{ pending_orders|length }})</button>
-        <button onclick="switchTab('completed')" id="tab-completed" class="btn-primary" style="background: rgba(255,255,255,0.05); color: var(--text-dim);">Completados ({{ completed_orders|length }})</button>
+        <button onclick="switchTab('pending')" id="tab-pending" class="btn-primary" style="background: var(--primary); color: var(--bg-card);">Pendientes ({{ pending_orders|length }})</button>
+        <button onclick="switchTab('completed')" id="tab-completed" class="btn-primary" style="background: var(--border); color: var(--text-dim);">Completados ({{ completed_orders|length }})</button>
     </div>
 
     <!-- Tabla de Pedidos Pendientes -->
@@ -32,7 +32,7 @@
             </thead>
             <tbody>
                 {% for order in pending_orders %}
-                <tr style="background: rgba(255,255,255,0.02); border-radius: 12px;">
+                <tr style="background: var(--border); opacity: 0.9; border-radius: 12px;">
                     <td style="padding: 20px; border-radius: 12px 0 0 12px;">
                         <span style="display: block; font-weight: 700;">#{{ order.id }}</span>
                         <span style="font-size: 12px; color: var(--text-dim);">{{ order.created_at|date:"d/m/Y H:i" }}</span>
@@ -117,8 +117,8 @@
 
     <!-- Modal de Detalles de Pedido -->
     <div id="orderModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
-        <div class="modal-content" style="background: var(--bg-card); padding: 30px; border-radius: 20px; width: 90%; max-width: 600px; border: 1px solid rgba(255,255,255,0.1); position: relative;">
-            <button onclick="closeModal()" style="position: absolute; top: 20px; right: 20px; background: none; border: none; color: white; cursor: pointer; font-size: 20px;">
+        <div class="modal-content" style="background: var(--bg-card); padding: 30px; border-radius: 20px; width: 90%; max-width: 600px; border: 1px solid var(--border); position: relative;">
+            <button onclick="closeModal()" style="position: absolute; top: 20px; right: 20px; background: none; border: none; color: var(--text-main); cursor: pointer; font-size: 20px;">
                 <i class="fas fa-times"></i>
             </button>
             <h3 id="modalTitle" style="margin-bottom: 20px;" class="gradient-text">Detalles del Pedido</h3>
@@ -128,7 +128,7 @@
             </div>
             
             <div style="margin-top: 25px; text-align: right;">
-                <button onclick="closeModal()" class="btn-primary" style="background: rgba(255,255,255,0.1); color: white;">Cerrar</button>
+                <button onclick="closeModal()" class="btn-primary" style="background: var(--border); color: var(--text-main);">Cerrar</button>
             </div>
         </div>
     </div>
@@ -140,15 +140,15 @@
             document.getElementById('section-pending').style.display = 'block';
             document.getElementById('section-completed').style.display = 'none';
             document.getElementById('tab-pending').style.background = 'var(--primary)';
-            document.getElementById('tab-pending').style.color = 'white';
-            document.getElementById('tab-completed').style.background = 'rgba(255,255,255,0.05)';
+            document.getElementById('tab-pending').style.color = 'var(--bg-card)';
+            document.getElementById('tab-completed').style.background = 'var(--border)';
             document.getElementById('tab-completed').style.color = 'var(--text-dim)';
         } else {
             document.getElementById('section-pending').style.display = 'none';
             document.getElementById('section-completed').style.display = 'block';
             document.getElementById('tab-completed').style.background = 'var(--primary)';
-            document.getElementById('tab-completed').style.color = 'white';
-            document.getElementById('tab-pending').style.background = 'rgba(255,255,255,0.05)';
+            document.getElementById('tab-completed').style.color = 'var(--bg-card)';
+            document.getElementById('tab-pending').style.background = 'var(--border)';
             document.getElementById('tab-pending').style.color = 'var(--text-dim)';
         }
     }

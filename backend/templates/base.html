@@ -13,12 +13,25 @@
             --bg-dark: #000000;
             --bg-card: #080808;
             --primary: #B08B90; /* Pastel Muted Rose */
+            --primary-rgb: 176, 139, 144;
             --accent: #9BB0A8;  /* Pastel Muted Sage */
             --warning: #C4A484; /* Pastel Muted Amber */
             --text-main: #DEDEDE;
             --text-dim: #666666;
             --border: rgba(255, 255, 255, 0.05);
             --radius: 18px;
+        }
+
+        body.light-mode {
+            --bg-dark: #F0F2F5;
+            --bg-card: #FFFFFF;
+            --primary: #8E1B2D;
+            --primary-rgb: 142, 27, 45;
+            --accent: #5D6D7E;
+            --warning: #B7950B;
+            --text-main: #1A1A1B;
+            --text-dim: #5F6769;
+            --border: rgba(0, 0, 0, 0.1);
         }
 
         body {
@@ -150,7 +163,7 @@
         
         .btn-primary {
             background-color: var(--primary);
-            color: white;
+            color: var(--bg-card);
             border: none;
             padding: 12px 30px;
             border-radius: 12px;
@@ -179,11 +192,11 @@
 
         .form-control {
             width: 100%;
-            background: rgba(255, 255, 255, 0.05);
+            background: var(--bg-dark);
             border: 1px solid var(--border);
             border-radius: 12px;
             padding: 12px 15px;
-            color: white;
+            color: var(--text-main);
             font-size: 14px;
             transition: 0.3s;
             outline: none;
@@ -215,8 +228,8 @@
         }
 
         select.form-control option {
-            background-color: #1a1a1a;
-            color: white;
+            background-color: var(--bg-card);
+            color: var(--text-main);
             padding: 10px;
         }
 
@@ -228,6 +241,34 @@
         }
         input[type=number] {
             -moz-appearance: textfield;
+        }
+
+        .theme-toggle {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px 20px;
+            margin: 10px 20px;
+            background: rgba(var(--primary-rgb), 0.05);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+            color: var(--text-main);
+            transition: 0.3s;
+            width: calc(100% - 40px);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(var(--primary-rgb), 0.1);
+        }
+
+        .theme-toggle i {
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
         }
 
         /* Responsive */
@@ -257,7 +298,7 @@
             display: none;
             background: none;
             border: 1px solid var(--border);
-            color: white;
+            color: var(--text-main);
             padding: 10px;
             border-radius: 8px;
             cursor: pointer;
@@ -398,6 +439,12 @@
             </li>
         </ul>
 
+        <!-- Botón de Tema -->
+        <button class="theme-toggle" id="themeToggle" type="button">
+            <i class="fa-solid fa-moon" id="themeIcon"></i>
+            <span id="themeText">Modo Oscuro</span>
+        </button>
+
         <div style="padding: 20px; border-top: 1px solid var(--border);">
             <a href="/accounts/logout/" class="nav-link" style="color: #FF5C5C;"><i class="fas fa-sign-out-alt"></i> Salir</a>
         </div>
@@ -439,6 +486,40 @@
 
     <!-- WebSocket Real-time Updates -->
     <script>
+        // Theme Management
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const themeText = document.getElementById('themeText');
+        const body = document.body;
+
+        function updateThemeUI(isLight) {
+            if (isLight) {
+                themeIcon.classList.replace('fa-moon', 'fa-sun');
+                themeText.textContent = 'Cambiar a Modo Oscuro';
+                body.classList.add('light-mode');
+            } else {
+                themeIcon.classList.replace('fa-sun', 'fa-moon');
+                themeText.textContent = 'Cambiar a Modo Claro';
+                body.classList.remove('light-mode');
+            }
+        }
+
+        // Initialize theme
+        const savedTheme = localStorage.getItem('theme');
+        const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+
+        if (savedTheme === 'light' || (!savedTheme && prefersLight)) {
+            updateThemeUI(true);
+        }
+
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+                const isLight = body.classList.toggle('light-mode');
+                localStorage.setItem('theme', isLight ? 'light' : 'dark');
+                updateThemeUI(isLight);
+            });
+        }
+
         function toggleMobileMenu() {
             document.getElementById('sidebar').classList.toggle('active');
             document.querySelector('.sidebar-overlay').classList.toggle('active');
