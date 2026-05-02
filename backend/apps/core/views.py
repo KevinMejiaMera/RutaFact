@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from apps.companies.models import Company
 from apps.sri_integration.models import SRIConfiguration, ElectronicDocument, CreditNote
 from apps.certificates.models import DigitalCertificate
@@ -242,11 +242,13 @@ def admin_invoices_view(request):
             status='AUTHORIZED'
         ).select_related('created_by').order_by('-created_at')
 
-        # Documentos anulados
+        # Documentos anulados o con nota de crédito (Anulaciones totales o parciales)
+        from django.db.models import Q
         voided_invoices = ElectronicDocument.objects.filter(
-            company=company,
-            status='VOIDED'
-        ).select_related('created_by').prefetch_related('credit_notes').order_by('-created_at')
+            company=company
+        ).filter(
+            Q(status='VOIDED') | Q(credit_notes__isnull=False)
+        ).distinct().select_related('created_by').prefetch_related('credit_notes').order_by('-created_at')
 
     context = {
         'company': company,
@@ -307,35 +309,64 @@ def admin_retry_credit_note(request, pk):
 @login_required
 @user_passes_test(is_admin)
 def admin_annul_invoice(request, pk):
-    """Anular una factura autorizada mediante la creación de una Nota de Crédito"""
+    """
+    Anular una factura autorizada mediante la creación de una Nota de Crédito.
+    Soporta:
+    1. GET: Anulación total (tradicional)
+    2. POST: Anulación parcial o total con selección de ítems (Profesional)
+    """
     from apps.sri_integration.tasks import process_document_async
+    from apps.sri_integration.models import DocumentItem, DocumentTax
+    import json
     
     companies = get_user_companies_secure(request.user)
     invoice = get_object_or_404(ElectronicDocument, pk=pk, company__in=companies, document_type='INVOICE')
     
     # Solo permitir anular facturas autorizadas (o enviadas)
     if invoice.status not in ['AUTHORIZED', 'SENT']:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.method == 'POST':
+            return JsonResponse({'status': 'error', 'message': f"Estado actual {invoice.status} no permite anulación."}, status=400)
         messages.warning(request, f"Solo se pueden anular facturas que han sido autorizadas o enviadas al SRI. Estado actual: {invoice.status}")
         return redirect('admin_invoices')
         
     # Verificar si ya existe una nota de crédito para esta factura
-    if CreditNote.objects.filter(original_document=invoice, status__in=['DRAFT', 'GENERATED', 'SIGNED', 'SENT', 'AUTHORIZED']).exists():
-        messages.warning(request, f"Ya existe una Nota de Crédito en proceso o autorizada para la factura {invoice.document_number}.")
-        return redirect('admin_invoices')
-        
+    # (Permitimos múltiples si son parciales? SRI permite varias notas de crédito por factura hasta agotar el total)
+    # Por ahora, si es anulación TOTAL, bloqueamos si ya existe algo.
+    
+    is_partial = False
+    items_to_annul = []
+    reason_description = f"Anulacion de factura {invoice.document_number}"
+    
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            items_data = data.get('items', [])
+            reason_description = data.get('reason', reason_description)
+            
+            if items_data:
+                is_partial = True
+                items_to_annul = items_data
+            elif data.get('total_annullation', False):
+                is_partial = False
+            else:
+                return JsonResponse({'status': 'error', 'message': "Debe seleccionar ítems o confirmar anulación total."}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': f"Error en datos: {str(e)}"}, status=400)
+
     try:
         with transaction.atomic():
-            # Crear la Nota de Crédito
+            # 1. Crear la cabecera de la Nota de Crédito
             credit_note = CreditNote.objects.create(
                 company=invoice.company,
                 original_document=invoice,
                 reason_code='02', # Anulación de venta
-                reason_description=f"Anulacion de factura {invoice.document_number}",
+                reason_description=reason_description,
                 customer_identification_type=invoice.customer_identification_type,
                 customer_identification=invoice.customer_identification,
                 customer_name=invoice.customer_name,
                 customer_address=invoice.customer_address,
                 customer_email=invoice.customer_email,
+                # Totales iniciales, se ajustarán si es parcial
                 subtotal_without_tax=invoice.subtotal_without_tax,
                 total_tax=invoice.total_tax,
                 total_amount=invoice.total_amount,
@@ -343,55 +374,175 @@ def admin_annul_invoice(request, pk):
                 status='DRAFT'
             )
             
-            # Encolar procesamiento asíncrono de la Nota de Crédito
+            nc_items_to_process = []
+            
+            if is_partial:
+                nc_subtotal = Decimal('0.00')
+                nc_total_tax = Decimal('0.00')
+                
+                for item_data in items_to_annul:
+                    original_item = DocumentItem.objects.get(id=item_data.get('id'), document=invoice)
+                    qty = Decimal(str(item_data.get('quantity')))
+                    
+                    if qty > original_item.quantity:
+                        raise ValueError(f"Cantidad a anular ({qty}) excede la original ({original_item.quantity})")
+                    
+                    item_subtotal = (qty * original_item.unit_price) - Decimal(str(item_data.get('discount', '0.00')))
+                    
+                    nc_item = DocumentItem.objects.create(
+                        credit_note=credit_note,
+                        main_code=original_item.main_code,
+                        auxiliary_code=original_item.auxiliary_code,
+                        description=original_item.description,
+                        quantity=qty,
+                        unit_price=original_item.unit_price,
+                        discount=Decimal(str(item_data.get('discount', '0.00'))),
+                        subtotal=item_subtotal
+                    )
+                    nc_items_to_process.append({'id': original_item.main_code, 'quantity': qty, 'description': original_item.description})
+                    
+                    # Impuestos del ítem
+                    item_taxes = original_item.taxes.all()
+                    if not item_taxes.exists():
+                        # Fallback: Usar impuestos del documento si el ítem no tiene vinculados (Datos legados)
+                        doc_taxes = invoice.taxes.filter(tax_code='2', item__isnull=True)
+                        if doc_taxes.exists():
+                            main_tax = doc_taxes.first()
+                            tax_amount = (item_subtotal * main_tax.rate / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            DocumentTax.objects.create(
+                                credit_note=credit_note,
+                                item=nc_item,
+                                tax_code=main_tax.tax_code,
+                                percentage_code=main_tax.percentage_code,
+                                rate=main_tax.rate,
+                                taxable_base=item_subtotal.quantize(Decimal('0.01')),
+                                tax_amount=tax_amount
+                            )
+                            nc_total_tax += tax_amount
+                    else:
+                        for tax in item_taxes:
+                            tax_amount = (item_subtotal * tax.rate / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            DocumentTax.objects.create(
+                                credit_note=credit_note,
+                                item=nc_item,
+                                tax_code=tax.tax_code,
+                                percentage_code=tax.percentage_code,
+                                rate=tax.rate,
+                                taxable_base=item_subtotal.quantize(Decimal('0.01')),
+                                tax_amount=tax_amount
+                            )
+                            nc_total_tax += tax_amount
+                    
+                    nc_subtotal += item_subtotal
+                
+                # Actualizar cabecera con totales parciales
+                credit_note.subtotal_without_tax = nc_subtotal
+                credit_note.total_tax = nc_total_tax
+                credit_note.total_amount = nc_subtotal + nc_total_tax
+                credit_note.save()
+            else:
+                # Anulación Total: Replicar todos los ítems
+                for original_item in invoice.items.all():
+                    nc_item = DocumentItem.objects.create(
+                        credit_note=credit_note,
+                        main_code=original_item.main_code,
+                        auxiliary_code=original_item.auxiliary_code,
+                        description=original_item.description,
+                        quantity=original_item.quantity,
+                        unit_price=original_item.unit_price,
+                        discount=original_item.discount,
+                        subtotal=original_item.subtotal
+                    )
+                    nc_items_to_process.append({'id': original_item.main_code, 'quantity': original_item.quantity, 'description': original_item.description})
+                    
+                    # Impuestos del ítem
+                    item_taxes = original_item.taxes.all()
+                    if not item_taxes.exists():
+                        doc_taxes = invoice.taxes.filter(tax_code='2', item__isnull=True)
+                        for tax in doc_taxes:
+                            # Proporcionar el impuesto al ítem
+                            DocumentTax.objects.create(
+                                credit_note=credit_note,
+                                item=nc_item,
+                                tax_code=tax.tax_code,
+                                percentage_code=tax.percentage_code,
+                                rate=tax.rate,
+                                taxable_base=original_item.subtotal.quantize(Decimal('0.01')),
+                                tax_amount=(original_item.subtotal * tax.rate / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            )
+                    else:
+                        for tax in item_taxes:
+                            DocumentTax.objects.create(
+                                credit_note=credit_note,
+                                item=nc_item,
+                                tax_code=tax.tax_code,
+                                percentage_code=tax.percentage_code,
+                                rate=tax.rate,
+                                taxable_base=tax.taxable_base,
+                                tax_amount=tax.tax_amount
+                            )
+            
+            # 2. Crear resumen de impuestos a nivel de documento
+            from django.db.models import Sum
+            dt_summary = DocumentTax.objects.filter(credit_note=credit_note, item__isnull=False).values(
+                'tax_code', 'percentage_code', 'rate'
+            ).annotate(total_base=Sum('taxable_base'), total_amount=Sum('tax_amount'))
+            
+            for dt in dt_summary:
+                DocumentTax.objects.create(
+                    credit_note=credit_note,
+                    item=None,
+                    tax_code=dt['tax_code'],
+                    percentage_code=dt['percentage_code'],
+                    rate=dt['rate'],
+                    taxable_base=dt['total_base'],
+                    tax_amount=dt['total_amount']
+                )
+
+            # 3. Encolar procesamiento asíncrono
             transaction.on_commit(lambda: process_document_async.delay(credit_note.id, model_type='CreditNote'))
             
-            # Marcar la factura original como ANULADA
-            invoice.status = 'VOIDED'
-            invoice.save()
+            # 4. Marcar factura como VOIDED (solo si es anulación total, o siempre?)
+            # El SRI permite anular PARCIALMENTE sin anular la factura completa en la DB.
+            # Pero si el usuario dijo "Anular", usualmente es porque ya no quiere la factura original.
+            # Si es parcial, la factura original sigue siendo válida por el resto.
+            # REGLA: Si es TOTAL, marcar VOIDED. Si es PARCIAL, dejar como AUTHORIZED pero con NC asociada.
+            if not is_partial:
+                invoice.status = 'VOIDED'
+                invoice.save()
             
-            # DEVOLVER STOCK A INVENTARIO (NUEVO)
-            items = invoice.additional_data.get('pos_items', [])
-            if items:
-                from apps.inventory.models import ProductStock, StockMovement
-                from apps.invoicing.models import ProductTemplate
-                
-                for item in items:
-                    prod_id = item.get('id')
-                    qty = Decimal(str(item.get('quantity', 0)))
+            # 5. DEVOLVER STOCK (Solo para los ítems anulados)
+            from apps.inventory.models import ProductStock, StockMovement
+            from apps.invoicing.models import ProductTemplate
+            
+            for item in nc_items_to_process:
+                qty = item['quantity']
+                # Buscar producto por código principal
+                prod = ProductTemplate.objects.filter(main_code=item['id'], company=invoice.company).first()
+                if prod:
+                    stock, _ = ProductStock.objects.get_or_create(company=invoice.company, product=prod, defaults={'quantity': 0})
+                    prev_stock = stock.quantity
+                    stock.quantity += qty
+                    stock.save()
+                    prod.current_stock += qty
+                    prod.save()
                     
-                    if prod_id and qty > 0:
-                        prod = ProductTemplate.objects.filter(id=prod_id, company=invoice.company).first()
-                        if prod:
-                            stock, _ = ProductStock.objects.get_or_create(
-                                company=invoice.company, 
-                                product=prod,
-                                defaults={'quantity': 0}
-                            )
-                            prev_stock = stock.quantity
-                            stock.quantity += qty
-                            stock.save()
-                            
-                            # Sincronizar Template
-                            prod.current_stock += qty
-                            prod.save()
-                            
-                            # Registrar movimiento
-                            StockMovement.objects.create(
-                                company=invoice.company,
-                                product=prod,
-                                movement_type='IN', # Entrada por devolución
-                                quantity=qty,
-                                previous_stock=prev_stock,
-                                new_stock=stock.quantity,
-                                reference=f"ANUL-{invoice.document_number}",
-                                notes=f"Devolución por anulación de factura",
-                                created_by=request.user
-                            )
+                    StockMovement.objects.create(
+                        company=invoice.company, product=prod, movement_type='IN',
+                        quantity=qty, previous_stock=prev_stock, new_stock=stock.quantity,
+                        reference=f"NC-{credit_note.document_number or 'PEND'}",
+                        notes=f"Devolución por NC de factura {invoice.document_number}",
+                        created_by=request.user
+                    )
             
-            messages.success(request, f"Se ha iniciado la anulación de la factura {invoice.document_number} y se ha devuelto el stock al inventario.")
+            msg = f"Se ha generado la Nota de Crédito {'parcial' if is_partial else 'total'} para la factura {invoice.document_number}."
+            if request.method == 'POST':
+                return JsonResponse({'status': 'success', 'message': msg, 'credit_note_id': credit_note.id})
+            messages.success(request, msg)
             
     except Exception as e:
+        if request.method == 'POST':
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
         messages.error(request, f"Error al intentar anular la factura: {str(e)}")
         
     return redirect('admin_invoices')
@@ -740,6 +891,11 @@ def admin_pos_view(request):
                 for item in items:
                     product = ProductTemplate.objects.get(id=item['id'], company=company)
                     qty = Decimal(str(item['quantity']))
+                    
+                    # VALIDACIÓN DE STOCK: Evitar negativos
+                    if product.track_inventory and product.current_stock < qty:
+                        raise ValueError(f"Stock insuficiente para {product.name}. Disponible: {product.current_stock}")
+                        
                     price_inclusive = Decimal(str(item['price']))
                     discount_inclusive = Decimal(str(item.get('discount', 0)))
                     
@@ -747,17 +903,17 @@ def admin_pos_view(request):
                     
                     if tax_rate > 0:
                         rate_factor = Decimal('1') + (tax_rate / Decimal('100'))
-                        price_exclusive = price_inclusive / rate_factor
-                        discount_exclusive = discount_inclusive / rate_factor
+                        price_exclusive = (price_inclusive / rate_factor).quantize(Decimal('0.000001')) # Mantener algo de precisión antes del final
+                        discount_exclusive = (discount_inclusive / rate_factor).quantize(Decimal('0.01'))
                     else:
                         price_exclusive = price_inclusive
                         discount_exclusive = discount_inclusive
                         
-                    line_subtotal_exclusive = (qty * price_exclusive) - discount_exclusive
+                    line_subtotal_exclusive = ((qty * price_exclusive) - discount_exclusive).quantize(Decimal('0.01'))
                     
                     if tax_rate > 0:
                         subtotal_iva += line_subtotal_exclusive
-                        total_tax += line_subtotal_exclusive * (tax_rate / Decimal('100'))
+                        total_tax += (line_subtotal_exclusive * (tax_rate / Decimal('100'))).quantize(Decimal('0.01'))
                     else:
                         subtotal_0 += line_subtotal_exclusive
                     
@@ -810,7 +966,35 @@ def admin_pos_view(request):
                     payment_term=0,
                     time_unit='dias'
                 )
-                # 2. Registrar ítems sanitizados en adicionales
+                # 2. Registrar ítems sanitizados en adicionales Y en tablas oficiales
+                from apps.sri_integration.models import DocumentItem, DocumentTax
+                for ci in clean_items:
+                    prod = ProductTemplate.objects.get(id=ci['id'])
+                    item_obj = DocumentItem.objects.create(
+                        document=doc,
+                        main_code=prod.main_code,
+                        description=prod.name,
+                        quantity=Decimal(str(ci['quantity'])),
+                        unit_price=Decimal(str(ci['price'])).quantize(Decimal('0.000001')),
+                        discount=Decimal(str(ci['discount'])).quantize(Decimal('0.01')),
+                        subtotal=Decimal(str(ci['quantity'] * ci['price'] - ci.get('discount', 0))).quantize(Decimal('0.01'))
+                    )
+                    
+                    # Registrar impuesto del ítem (Simplificado para el POS)
+                    tax_rate = Decimal(str(ci['tax_rate']))
+                    # Mapeo básico de porcentajes SRI (0:0%, 2:12%, 4:15%)
+                    perc_code = '0' if tax_rate == 0 else '2' if tax_rate == 12 else '4' if tax_rate == 15 else '2'
+                    
+                    DocumentTax.objects.create(
+                        document=doc,
+                        item=item_obj,
+                        tax_code='2', # IVA
+                        percentage_code=perc_code,
+                        rate=tax_rate,
+                        taxable_base=item_obj.subtotal,
+                        tax_amount=(item_obj.subtotal * (tax_rate / Decimal('100'))).quantize(Decimal('0.01'))
+                    )
+
                 doc.additional_data = {'pos_items': clean_items}
                 doc.save()
                 
@@ -852,8 +1036,14 @@ def admin_pos_view(request):
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-    # Cargar datos para el POS
-    products = ProductTemplate.objects.filter(company=company, is_active=True).order_by('name')
+    # Cargar datos para el POS: Solo productos con stock > 0 o que no controlen inventario
+    from django.db.models import Q
+    products = ProductTemplate.objects.filter(
+        company=company, 
+        is_active=True
+    ).filter(
+        Q(track_inventory=False) | Q(current_stock__gt=0)
+    ).order_by('name')
     customers = Customer.objects.filter(company=company, is_active=True).order_by('name')
     payment_methods = PaymentMethod.objects.filter(company=company, is_active=True).order_by('name')
     

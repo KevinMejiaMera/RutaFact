@@ -15,7 +15,7 @@ app_name = 'invoicing'
 router = DefaultRouter()
 router.register(r'customers', CustomerViewSet)
 router.register(r'categories', ProductCategoryViewSet)
-router.register(r'products', ProductTemplateViewSet)
+router.register(r'products', ProductTemplateViewSet, basename='product-template')
 router.register(r'templates', InvoiceTemplateViewSet)
 router.register(r'payment-methods', PaymentMethodViewSet)
 

@@ -78,6 +78,9 @@ class CreateInvoiceSerializer(serializers.Serializer):
     # Pagos de la factura
     payments = DocumentPaymentCreateSerializer(many=True, required=False)
     
+    # Datos adicionales (bolsa de datos JSON)
+    additional_data = serializers.JSONField(required=False, default=dict)
+    
     def validate_items(self, value):
         if not value:
             raise serializers.ValidationError("At least one item is required")

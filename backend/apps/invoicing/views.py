@@ -33,12 +33,23 @@ class ProductCategoryViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'description']
 
 class ProductTemplateViewSet(viewsets.ModelViewSet):
-    queryset = ProductTemplate.objects.all()
     serializer_class = ProductTemplateSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['company', 'category', 'product_type', 'track_inventory']
     search_fields = ['name', 'main_code', 'description']
     ordering_fields = ['name', 'unit_price', 'created_at']
+
+    def get_queryset(self):
+        queryset = ProductTemplate.objects.all()
+        # Filtro opcional para el POS: solo mostrar productos con stock > 0 
+        # o que no controlen inventario (servicios)
+        only_with_stock = self.request.query_params.get('only_with_stock', None)
+        if only_with_stock == 'true':
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(track_inventory=False) | Q(current_stock__gt=0)
+            )
+        return queryset
     
     @action(detail=False, methods=['get'])
     def low_stock(self, request):

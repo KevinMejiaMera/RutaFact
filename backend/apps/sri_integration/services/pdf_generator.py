@@ -553,18 +553,26 @@ class PDFGenerator:
             pos_items = doc_add_data['pos_items']
             if isinstance(pos_items, list):
                 for pi in pos_items:
-                    # Mapear campos del JSON a lo esperado por el PDF
+                    # Recalcular subtotal si viene en cero o nulo en el JSON
+                    qty = float(pi.get('quantity', 1))
+                    price = float(pi.get('unit_price', pi.get('price', 0)))
+                    disc = float(pi.get('discount', 0))
+                    item_subtotal = float(pi.get('subtotal', pi.get('total_price', 0)))
+                    
+                    if (not item_subtotal or item_subtotal == 0) and qty > 0 and price > 0:
+                        item_subtotal = (qty * price) - disc
+
                     row = [
                         Paragraph(str(pi.get('main_code', pi.get('id', ''))), self.styles['TableCell']),
                         Paragraph(str(pi.get('auxiliary_code', '')), self.styles['TableCell']),
-                        Paragraph(f"{float(pi.get('quantity', 1)):.2f}", self.styles['TableCell']),
+                        Paragraph(f"{qty:.2f}", self.styles['TableCell']),
                         Paragraph(str(pi.get('description', pi.get('name', ''))), self.styles['TableCell']),
                         Paragraph("", self.styles['TableCell']),
-                        Paragraph(f"{float(pi.get('unit_price', pi.get('price', 0))):.2f}", self.styles['TableCell']),
+                        Paragraph(f"{price:.2f}", self.styles['TableCell']),
                         Paragraph("0.00", self.styles['TableCell']),
                         Paragraph("0.00", self.styles['TableCell']),
-                        Paragraph(f"{float(pi.get('discount', 0)):.2f}", self.styles['TableCell']),
-                        Paragraph(f"{float(pi.get('subtotal', pi.get('total_price', 0))):.2f}", self.styles['TableCell']),
+                        Paragraph(f"{disc:.2f}", self.styles['TableCell']),
+                        Paragraph(f"{item_subtotal:.2f}", self.styles['TableCell']),
                     ]
                     table_data.append(row)
         else:
@@ -573,6 +581,11 @@ class PDFGenerator:
                 add_info = ""
                 if item.additional_details:
                     add_info = ", ".join([f"{v}" for k, v in item.additional_details.items()])
+                
+                # Recalcular subtotal si viene en cero (evitar error visual en RIDE)
+                item_subtotal = item.subtotal
+                if (not item_subtotal or item_subtotal == 0) and item.quantity > 0 and item.unit_price > 0:
+                    item_subtotal = (item.quantity * item.unit_price) - item.discount
                 
                 row = [
                     Paragraph(item.main_code, self.styles['TableCell']),
@@ -584,7 +597,7 @@ class PDFGenerator:
                     Paragraph("0.00", self.styles['TableCell']),
                     Paragraph("0.00", self.styles['TableCell']),
                     Paragraph(f"{item.discount:.2f}", self.styles['TableCell']),
-                    Paragraph(f"{item.subtotal:.2f}", self.styles['TableCell']),
+                    Paragraph(f"{item_subtotal:.2f}", self.styles['TableCell']),
                 ]
                 table_data.append(row)
         

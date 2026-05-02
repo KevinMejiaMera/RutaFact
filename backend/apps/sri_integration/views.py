@@ -106,8 +106,14 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                 
                 # Obtener datos validados
                 validated_data = serializer.validated_data
-                items_data = validated_data.pop("items")
+                items_data = validated_data.pop("items", [])
                 payments_data = validated_data.pop("payments", [])
+                additional_data = validated_data.get("additional_data", {})
+                
+                # REPARACIÓN: Si no hay items explícitos, recuperar de additional_data (POS fallback)
+                if not items_data and "pos_items" in additional_data:
+                    items_data = additional_data["pos_items"]
+                    logger.info(f"🔄 Recuperando {len(items_data)} ítems desde adicionales para {validated_data.get('customer_name')}")
                 
                 # Obtener empresa
                 company = Company.objects.get(id=validated_data["company"])
@@ -195,7 +201,7 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                     unit_price = fix_decimal_places(Decimal(str(item_data["unit_price"])), 6)
                     discount = fix_decimal_places(Decimal(str(item_data.get("discount", 0))), 2)
                     
-                    # Calcular subtotal con redondeo correcto
+                    # Forzar cálculo de subtotal en backend para evitar 0.00
                     raw_subtotal = (quantity * unit_price) - discount
                     subtotal = fix_decimal_places(raw_subtotal, 2)
                     
@@ -499,42 +505,155 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=["post"])
     def create_credit_note(self, request):
-        """Crear nota de crédito completa"""
+        """
+        Crear nota de crédito completa (Anulación Total o Parcial)
+        Soporta envío de ítems específicos para anulación parcial.
+        """
         try:
             from apps.companies.models import Company
             from decimal import Decimal
             
-            # Obtener datos del request
             data = request.data
+            original_document_id = data.get("original_document_id")
+            items_data = data.get("items", []) # Lista de ítems si es parcial
             
-            # Obtener empresa y documento original
-            company = Company.objects.first()  # O el ID de la empresa desde el request
-            original_document = ElectronicDocument.objects.get(id=data.get("original_document_id"))
+            if not original_document_id:
+                return Response({"error": "original_document_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+                
+            original_document = ElectronicDocument.objects.get(id=original_document_id)
+            company = original_document.company
             
-            # Crear nota de crédito
-            credit_note = CreditNote.objects.create(
-                company=company,
-                original_document=original_document,
-                reason_code=data.get("reason_code", "01"),
-                reason_description=data.get("reason_description", "Devolución"),
-                customer_identification_type=data.get("customer_identification_type", "05"),
-                customer_identification=data.get("customer_identification"),
-                customer_name=data.get("customer_name"),
-                customer_address=data.get("customer_address", ""),
-                customer_email=data.get("customer_email", ""),
-                subtotal_without_tax=Decimal(str(data.get("subtotal_without_tax", "0.00"))),
-                total_amount=Decimal(str(data.get("total_amount", "0.00"))),
-                issue_date=timezone.localtime(timezone.now()).date(),
-                status="DRAFT"
-            )
-            
-            logger.info(f"Nota de crédito creada: ID {credit_note.id}")
+            with transaction.atomic():
+                # 1. Crear la cabecera de la Nota de Crédito
+                credit_note = CreditNote.objects.create(
+                    company=company,
+                    original_document=original_document,
+                    reason_code=data.get("reason_code", "01"),
+                    reason_description=data.get("reason_description", "Devolución"),
+                    customer_identification_type=original_document.customer_identification_type,
+                    customer_identification=original_document.customer_identification,
+                    customer_name=original_document.customer_name,
+                    customer_address=original_document.customer_address,
+                    customer_email=original_document.customer_email,
+                    # Los totales se calcularán si hay ítems, si no se usan los enviados o los del doc original
+                    subtotal_without_tax=Decimal(str(data.get("subtotal_without_tax", "0.00"))),
+                    total_tax=Decimal(str(data.get("total_tax", "0.00"))),
+                    total_amount=Decimal(str(data.get("total_amount", "0.00"))),
+                    issue_date=timezone.localtime(timezone.now()).date(),
+                    status="DRAFT"
+                )
+                
+                # 2. Si hay ítems específicos (Anulación Parcial)
+                if items_data:
+                    nc_subtotal = Decimal('0.00')
+                    nc_total_tax = Decimal('0.00')
+                    
+                    for item_data in items_data:
+                        # item_data debe contener: id (del DocumentItem original), quantity, etc.
+                        original_item = DocumentItem.objects.get(id=item_data.get('id'))
+                        qty = Decimal(str(item_data.get('quantity')))
+                        
+                        # Validar que no anule más de lo que existe
+                        if qty > original_item.quantity:
+                            raise ValueError(f"Cantidad a anular ({qty}) es mayor a la original ({original_item.quantity})")
+                        
+                        # Calcular subtotal del ítem en la NC
+                        item_subtotal = (qty * original_item.unit_price) - Decimal(str(item_data.get('discount', '0.00')))
+                        
+                        nc_item = DocumentItem.objects.create(
+                            credit_note=credit_note,
+                            main_code=original_item.main_code,
+                            auxiliary_code=original_item.auxiliary_code,
+                            description=original_item.description,
+                            quantity=qty,
+                            unit_price=original_item.unit_price,
+                            discount=Decimal(str(item_data.get('discount', '0.00'))),
+                            subtotal=item_subtotal
+                        )
+                        
+                        # Replicar impuestos del ítem
+                        for tax in original_item.taxes.all():
+                            tax_amount = (item_subtotal * tax.rate / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            DocumentTax.objects.create(
+                                credit_note=credit_note,
+                                item=nc_item,
+                                tax_code=tax.tax_code,
+                                percentage_code=tax.percentage_code,
+                                rate=tax.rate,
+                                taxable_base=item_subtotal,
+                                tax_amount=tax_amount
+                            )
+                            nc_total_tax += tax_amount
+                        
+                        nc_subtotal += item_subtotal
+                    
+                    # Actualizar totales de la NC basados en los ítems
+                    credit_note.subtotal_without_tax = nc_subtotal
+                    credit_note.total_tax = nc_total_tax
+                    credit_note.total_amount = nc_subtotal + nc_total_tax
+                    credit_note.save()
+                    
+                else:
+                    # 3. Anulación Total (Si no se pasaron ítems, asumimos que se anula todo si el total enviado es 0)
+                    # O si el usuario confirmó "Anular Completa"
+                    if data.get('total_annullation', False):
+                        credit_note.subtotal_without_tax = original_document.subtotal_without_tax
+                        credit_note.total_tax = original_document.total_tax
+                        credit_note.total_amount = original_document.total_amount
+                        credit_note.save()
+                        
+                        # Replicar todos los ítems de la factura original
+                        for original_item in original_document.items.all():
+                            nc_item = DocumentItem.objects.create(
+                                credit_note=credit_note,
+                                main_code=original_item.main_code,
+                                auxiliary_code=original_item.auxiliary_code,
+                                description=original_item.description,
+                                quantity=original_item.quantity,
+                                unit_price=original_item.unit_price,
+                                discount=original_item.discount,
+                                subtotal=original_item.subtotal
+                            )
+                            for tax in original_item.taxes.all():
+                                DocumentTax.objects.create(
+                                    credit_note=credit_note,
+                                    item=nc_item,
+                                    tax_code=tax.tax_code,
+                                    percentage_code=tax.percentage_code,
+                                    rate=tax.rate,
+                                    taxable_base=tax.taxable_base,
+                                    tax_amount=tax.tax_amount
+                                )
+                
+                # 4. Crear impuestos a nivel de documento para la NC (Resumen)
+                # Esto es necesario para el XML y el PDF
+                from django.db.models import Sum
+                document_taxes = DocumentTax.objects.filter(credit_note=credit_note, item__isnull=False).values(
+                    'tax_code', 'percentage_code', 'rate'
+                ).annotate(
+                    total_base=Sum('taxable_base'),
+                    total_amount=Sum('tax_amount')
+                )
+                
+                for dt in document_taxes:
+                    DocumentTax.objects.create(
+                        credit_note=credit_note,
+                        item=None,
+                        tax_code=dt['tax_code'],
+                        percentage_code=dt['percentage_code'],
+                        rate=dt['rate'],
+                        taxable_base=dt['total_base'],
+                        tax_amount=dt['total_amount']
+                    )
+
+            logger.info(f"Nota de crédito {'parcial' if items_data else 'total'} creada: ID {credit_note.id}")
             
             return Response({
                 "id": credit_note.id,
                 "document_number": credit_note.document_number,
                 "status": credit_note.status,
-                "message": "Credit note created successfully"
+                "items_count": credit_note.items.count(),
+                "message": f"Credit note {'partial' if items_data else 'total'} created successfully"
             }, status=status.HTTP_201_CREATED)
             
         except Exception as e:

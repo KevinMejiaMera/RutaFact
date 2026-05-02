@@ -275,11 +275,19 @@ class XMLGeneratorSRI2025:
             
             # Detalles
             detalles = SubElement(nota_credito, 'detalles')
+            
+            # Intentar obtener items de la relación 'items' (DocumentItem)
+            items = []
             if hasattr(self.document, 'items') and self.document.items.exists():
-                for item in self.document.items.all():
+                items = self.document.items.all()
+            
+            if items:
+                for item in items:
                     detalle = self._create_detalle_nota_credito(item)
                     detalles.append(detalle)
             else:
+                # Fallback a detalle genérico
+                logger.info(f"Nota de Crédito {self.document.id} sin ítems detallados. Generando detalle genérico.")
                 detalle = self._create_detalle_generico_nota_credito()
                 detalles.append(detalle)
             
@@ -1140,15 +1148,24 @@ class XMLGeneratorSRI2025:
         
         # 14. totalConImpuestos
         total_con_impuestos = SubElement(info_nota_credito, 'totalConImpuestos')
-        taxes_summary = self._get_taxes_summary()
-        for tax_data in taxes_summary.values():
-            total_impuesto = SubElement(total_con_impuestos, 'totalImpuesto')
-            SubElement(total_impuesto, 'codigo').text = str(tax_data['codigo'])
-            SubElement(total_impuesto, 'codigoPorcentaje').text = str(tax_data['codigoPorcentaje'])
-            SubElement(total_impuesto, 'baseImponible').text = self._format_decimal(tax_data['base'])
-            SubElement(total_impuesto, 'valor').text = self._format_decimal(tax_data['valor'])
-            # Nota: tarifa NO es obligatoria en totalImpuesto de Nota de Crédito según algunas fichas, 
-            # pero si se incluye debe ser después de baseImponible.
+        
+        # Obtener impuestos del documento (resumen) si existen
+        if hasattr(self.document, 'taxes') and self.document.taxes.filter(item__isnull=True).exists():
+            for tax in self.document.taxes.filter(item__isnull=True):
+                total_impuesto = SubElement(total_con_impuestos, 'totalImpuesto')
+                SubElement(total_impuesto, 'codigo').text = str(tax.tax_code)
+                SubElement(total_impuesto, 'codigoPorcentaje').text = str(tax.percentage_code)
+                SubElement(total_impuesto, 'baseImponible').text = self._format_decimal(tax.taxable_base)
+                SubElement(total_impuesto, 'valor').text = self._format_decimal(tax.tax_amount)
+        else:
+            # Fallback a resumen calculado si no hay objetos DocumentTax
+            taxes_summary = self._get_taxes_summary()
+            for tax_data in taxes_summary.values():
+                total_impuesto = SubElement(total_con_impuestos, 'totalImpuesto')
+                SubElement(total_impuesto, 'codigo').text = str(tax_data['codigo'])
+                SubElement(total_impuesto, 'codigoPorcentaje').text = str(tax_data['codigoPorcentaje'])
+                SubElement(total_impuesto, 'baseImponible').text = self._format_decimal(tax_data['base'])
+                SubElement(total_impuesto, 'valor').text = self._format_decimal(tax_data['valor'])
         
         # 15. motivo
         SubElement(info_nota_credito, 'motivo').text = str(

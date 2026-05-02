@@ -100,7 +100,8 @@ def check_document_authorization_async(self, document_id, model_type='Electronic
             raise self.retry(countdown=countdown)
     
     except Exception as e:
-        if isinstance(e, self.Retry):
+        from celery.exceptions import Retry
+        if isinstance(e, Retry):
             raise e
         logger.error(f"❌ [CELERY] Error checking authorization for {model_type} {document_id}: {e}")
         
@@ -184,7 +185,8 @@ def process_document_async(self, document_id, model_type='ElectronicDocument'):
         }
         
     except Exception as e:
-        if isinstance(e, self.Retry):
+        from celery.exceptions import Retry
+        if isinstance(e, Retry):
             raise e
         logger.exception(f"💥 [CELERY] Critical error processing {model_type} {document_id}: {str(e)}")
         # Marcar como ERROR definitivo para que la cola avance
@@ -353,7 +355,8 @@ def send_authorization_notification_email(self, document_id, model_type='Electro
         logger.error(f"❌ [CELERY_EMAIL] {error_msg}")
         return {'sent': False, 'error': error_msg}
     except Exception as e:
-        if isinstance(e, self.Retry):
+        from celery.exceptions import Retry
+        if isinstance(e, Retry):
             raise e
         error_msg = f"Error sending email notification for {model_type} {document_id}: {e}"
         logger.error(f"❌ [CELERY_EMAIL] {error_msg}")

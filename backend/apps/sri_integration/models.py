@@ -948,7 +948,18 @@ class DocumentItem(BaseModel):
         ElectronicDocument,
         on_delete=models.CASCADE,
         related_name='items',
-        verbose_name=_('document')
+        verbose_name=_('document'),
+        null=True,
+        blank=True
+    )
+    
+    credit_note = models.ForeignKey(
+        'CreditNote',
+        on_delete=models.CASCADE,
+        related_name='items',
+        verbose_name=_('credit note'),
+        null=True,
+        blank=True
     )
     
     main_code = models.CharField(
@@ -1122,7 +1133,18 @@ class DocumentTax(BaseModel):
         ElectronicDocument,
         on_delete=models.CASCADE,
         related_name='taxes',
-        verbose_name=_('document')
+        verbose_name=_('document'),
+        null=True,
+        blank=True
+    )
+    
+    credit_note = models.ForeignKey(
+        'CreditNote',
+        on_delete=models.CASCADE,
+        related_name='taxes',
+        verbose_name=_('credit note'),
+        null=True,
+        blank=True
     )
     
     item = models.ForeignKey(

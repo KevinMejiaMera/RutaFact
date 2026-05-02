@@ -326,7 +326,7 @@
 
         <div class="products-grid" id="productsGrid">
             {% for product in products %}
-            <div class="product-card" onclick="addToCart({{ product.id }}, '{{ product.name }}', {{ product.unit_price|unlocalize }}, '{% if product.image %}{{ product.image.url }}{% endif %}', {{ product.tax_rate|unlocalize }})">
+            <div class="product-card" onclick="addToCart({{ product.id }}, '{{ product.name }}', {{ product.unit_price|unlocalize }}, '{% if product.image %}{{ product.image.url }}{% endif %}', {{ product.tax_rate|unlocalize }}, {{ product.current_stock|unlocalize }}, {{ product.track_inventory|yesno:'true,false' }})">
                 <div class="product-img">
                     {% if product.image %}
                         <img src="{{ product.image.url }}">
@@ -337,7 +337,13 @@
                 <div class="product-name">{{ product.name }}</div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto;">
                     <div class="product-price">${{ product.unit_price|floatformat:2 }}</div>
-                    <div class="stock-tag">Cod: {{ product.main_code|truncatechars:10 }}</div>
+                    {% if product.track_inventory %}
+                        <div class="stock-tag {% if product.current_stock <= 0 %}stock-empty{% endif %}" style="background: {% if product.current_stock <= 5 %}#ff5c5c33{% else %}var(--pos-border){% endif %}; color: {% if product.current_stock <= 5 %}#ff5c5c{% else %}var(--pos-text-dim){% endif %};">
+                            Stock: {{ product.current_stock|floatformat:0 }}
+                        </div>
+                    {% else %}
+                        <div class="stock-tag">Servicio</div>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
@@ -497,18 +503,28 @@
 <script>
     let cart = [];
 
-    function addToCart(id, name, price, image, taxRate) {
+    function addToCart(id, name, price, image, taxRate, stock, trackInventory) {
         const existing = cart.find(item => item.id === id);
         if (existing) {
+            if (trackInventory && existing.quantity >= stock) {
+                alert(`¡Stock Agotado! Solo hay ${stock} unidades disponibles.`);
+                return;
+            }
             existing.quantity += 1;
         } else {
+            if (trackInventory && stock <= 0) {
+                alert('¡Producto sin stock disponible!');
+                return;
+            }
             cart.push({
                 id: id,
                 name: name,
                 price: price,
                 image: image,
                 taxRate: taxRate,
-                quantity: 1
+                quantity: 1,
+                stock: stock,
+                trackInventory: trackInventory
             });
         }
         renderCart();
@@ -522,6 +538,10 @@
     function updateQty(id, delta) {
         const item = cart.find(item => item.id === id);
         if (item) {
+            if (delta > 0 && item.trackInventory && item.quantity >= item.stock) {
+                alert(`Límite de stock alcanzado (${item.stock})`);
+                return;
+            }
             item.quantity += delta;
             if (item.quantity <= 0) {
                 removeFromCart(id);
