@@ -28,6 +28,9 @@ class Order(BaseModel):
         verbose_name=_('customer')
     )
     delivery_address = models.TextField(_('delivery address'))
+    delivery_reference = models.TextField(_('delivery reference'), blank=True, help_text=_('Barrio, color de casa, etc.'))
+    contact_phone = models.CharField(_('contact phone'), max_length=20, blank=True)
+    
     status = models.CharField(
         _('status'),
         max_length=20, 

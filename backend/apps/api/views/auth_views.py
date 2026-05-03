@@ -288,9 +288,22 @@ def token_register(request):
         last_name=last_name
     )
     
-    # Crear asignación (APROBADO AUTOMÁTICAMENTE)
+    # Crear asignación (APROBADO AUTOMÁTICAMENTE y ASIGNADO A LA EMPRESA 1)
     from apps.users.models import UserCompanyAssignment, AdminNotification
-    UserCompanyAssignment.objects.create(user=user, status='assigned')
+    from apps.companies.models import Company
+    
+    assignment = UserCompanyAssignment.objects.create(user=user, status='assigned')
+    
+    # Asignar automáticamente a la empresa 1 si existe
+    main_company = Company.objects.filter(id=1).first()
+    if not main_company:
+        main_company = Company.objects.first()
+        
+    if main_company:
+        assignment.assigned_companies.add(main_company)
+        # También actualizar el campo company del usuario directamente para respaldo
+        user.company = main_company
+        user.save()
     
     # Notificar a los admins
     try:

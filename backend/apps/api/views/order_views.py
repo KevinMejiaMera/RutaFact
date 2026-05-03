@@ -32,7 +32,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Order.objects.all()
         
         if user.role.upper() in ['CLIENTE', 'CLIENT', 'CUSTOMER']:
-            return Order.objects.filter(customer__user=user)
+            from django.db.models import Q
+            return Order.objects.filter(Q(customer__user=user) | Q(created_by=user))
         
         companies = get_user_companies_exact(user)
         return Order.objects.filter(company__in=companies)

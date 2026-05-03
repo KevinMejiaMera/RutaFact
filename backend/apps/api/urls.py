@@ -211,6 +211,7 @@ class ProductViewSet(viewsets.ViewSet):
             
             # Filtros opcionales
             company_id = request.query_params.get('company')
+            print(f"DEBUG: ProductViewSet.list - company_id: {company_id}")
             limit = int(request.query_params.get('limit', 20))
             
             queryset = ProductTemplate.objects.filter(is_active=True)
@@ -218,6 +219,7 @@ class ProductViewSet(viewsets.ViewSet):
                 queryset = queryset.filter(company_id=company_id)
             
             products = queryset[:limit]
+            print(f"DEBUG: ProductViewSet.list - Found {products.count()} products")
             
             data = []
             for product in products:

@@ -24,6 +24,7 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'id', 'company', 'customer', 'customer_name', 'delivery_address', 
+            'delivery_reference', 'contact_phone',
             'status', 'status_display', 'subtotal_without_tax', 'total_tax', 
             'total_amount', 'invoice', 'notes', 'items', 'created_at'
         ]
@@ -37,7 +38,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Order
-        fields = ['delivery_address', 'notes', 'items']
+        fields = ['delivery_address', 'delivery_reference', 'contact_phone', 'notes', 'items']
     
     def create(self, validated_data):
         from django.db import transaction
@@ -46,40 +47,46 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         
         try:
+            billing_type = self.context['request'].data.get('billing_type', 'final_consumer')
+            print(f"DEBUG: Billing Type selected: {billing_type}")
+            
             with transaction.atomic():
-                # Intentar obtener el perfil de cliente del usuario
-                try:
-                    customer = user.customer_profile
-                    company = customer.company
-                    print(f"DEBUG: Customer profile found: {customer.id} for company {company.id}")
-                except Exception as e:
-                    print(f"DEBUG: Customer profile not found. Error: {str(e)}")
-                    
-                    # SI EL USUARIO TIENE ROL DE CLIENTE, CREAR PERFIL AUTOMÁTICAMENTE
-                    if user.role == 'CLIENTE' or user.role == 'CUSTOMER':
-                        print(f"DEBUG: Auto-creating customer profile for user {user.id}")
-                        # Usar la empresa del usuario o la empresa 1 por defecto
-                        user_company = user.company or Company.objects.first()
+                # Determinar la empresa
+                user_company = user.company or Company.objects.filter(id=1).first() or Company.objects.first()
+                
+                if billing_type == 'final_consumer':
+                    # BUSCAR O CREAR CONSUMIDOR FINAL GENÉRICO (13 nueves para SRI)
+                    customer, created = Customer.objects.get_or_create(
+                        company=user_company,
+                        identification='9999999999999',
+                        defaults={
+                            'name': 'CONSUMIDOR FINAL',
+                            'identification_type': '07'
+                        }
+                    )
+                    company = user_company
+                else:
+                    # FACTURA CON DATOS: Intentar usar perfil del usuario
+                    try:
+                        customer = user.customer_profile
+                        company = customer.company
+                    except Exception:
+                        # Si no existe, crearlo con sus datos de usuario
+                        print(f"DEBUG: Creating profile for user {user.id} on the fly")
                         customer = Customer.objects.create(
                             user=user,
                             company=user_company,
                             name=f"{user.first_name} {user.last_name}".strip() or user.email,
                             email=user.email,
-                            identification='9999999999', # Consumidor final por defecto
-                            identification_type='07'
+                            identification=user.phone or f"ID{user.id}", # Placeholder si no tiene ID
+                            identification_type='05' # Cédula por defecto
                         )
                         company = user_company
-                    else:
-                        # Fallback para admins/vendedores que crean pedidos para otros
-                        customer_id = self.context['request'].data.get('customer')
-                        if not customer_id:
-                            raise serializers.ValidationError("No se encontró perfil de cliente. Debes ser un Cliente registrado o proporcionar un customer_id.")
-                        customer = Customer.objects.get(id=customer_id)
-                        company = customer.company
                 
                 order = Order.objects.create(
                     company=company,
                     customer=customer,
+                    created_by=user,
                     **validated_data
                 )
                 print(f"DEBUG: Order base created: {order.id}")

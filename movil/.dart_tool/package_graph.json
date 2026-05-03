@@ -17,6 +17,7 @@
         "hive_flutter",
         "http",
         "intl",
+        "intl_phone_field",
         "latlong2",
         "path_provider",
         "provider",
@@ -66,6 +67,13 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "intl_phone_field",
+      "version": "3.2.0",
+      "dependencies": [
+        "flutter"
       ]
     },
     {
