@@ -46,6 +46,7 @@ urlpatterns = [
     path('dashboard/pos/', core_views.admin_pos_view, name='admin_pos'),
     path('dashboard/customers/add_ajax/', core_views.admin_add_customer_ajax, name='admin_add_customer_ajax'),
     path('dashboard/invoices/', core_views.admin_invoices_view, name='admin_invoices'),
+    path('dashboard/delivery-notes/', core_views.admin_delivery_notes_view, name='admin_delivery_notes'),
     path('dashboard/invoices/<int:pk>/retry/', core_views.admin_retry_invoice, name='admin_retry_invoice'),
     path('dashboard/credit-notes/<int:pk>/retry/', core_views.admin_retry_credit_note, name='admin_retry_credit_note'),
     path('dashboard/invoices/<int:pk>/annul/', core_views.admin_annul_invoice, name='admin_annul_invoice'),
@@ -61,6 +62,7 @@ urlpatterns = [
     path('dashboard/inventory/sync-all/', core_views.admin_sync_all_data, name='admin_sync_all_data'),
     path('dashboard/orders/', core_views.admin_orders_view, name='admin_orders'),
     path('dashboard/orders/<int:pk>/complete/', core_views.admin_complete_order, name='admin_complete_order'),
+    path('dashboard/orders/<int:pk>/cancel/', core_views.admin_cancel_order, name='admin_cancel_order'),
     path('dashboard/routes/', core_views.admin_routes_view, name='admin_routes'),
     path('dashboard/users/', core_views.admin_users_view, name='admin_users'),
     path('dashboard/reports/', core_views.admin_reports_view, name='admin_reports'),
@@ -69,6 +71,7 @@ urlpatterns = [
     path('dashboard/users/<int:user_id>/toggle/', core_views.toggle_user_assignment, name='toggle_user_assignment'),
     path('dashboard/users/<int:user_id>/update_role/', core_views.update_user_role, name='update_user_role'),
     path('dashboard/users/<int:user_id>/update_status/', core_views.update_user_status, name='update_user_status'),
+    path('dashboard/users/<int:user_id>/update/', core_views.admin_update_user, name='admin_update_user'),
     path('dashboard/users/<int:user_id>/toggle_tracking/', core_views.toggle_user_tracking, name='toggle_user_tracking'),
     
     # 📍 TRACKING URLs

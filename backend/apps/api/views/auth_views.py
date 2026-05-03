@@ -7,7 +7,8 @@ from rest_framework.authtoken.models import Token
 from apps.companies.models import CompanyAPIToken, Company
 from apps.api.user_company_helper import get_user_companies_exact
 from rest_framework_simplejwt.tokens import RefreshToken
-
+from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -107,26 +108,62 @@ def token_login(request):
     return Response({
         'success': True,
         'message': 'Login successful',
-        'user_token': str(refresh.access_token), # Ahora devolvemos el JWT aquí para compatibilidad
+        'user_token': str(refresh.access_token),
         'jwt_tokens': {
             'access': str(refresh.access_token),
             'refresh': str(refresh),
         },
         'company_tokens': company_tokens,
-        'user': {
-            'id': user.id,
-            'email': user.email,
-            'full_name': f"{user.first_name} {user.last_name}".strip(),
-            'role': user.role,
-            'can_track': user.can_track,
-            'company': user_companies.first().id if user_companies.exists() else (user.company.id if user.company else None)
-        },
+        'user': _get_full_user_data(user, request),
         'recommendations': {
             'use_company_tokens': True,
             'recommended_company': recommended_company.id if recommended_company else None,
             'message': 'Use company tokens for better security and simpler URLs'
         }
     }, status=status.HTTP_200_OK)
+
+
+def _get_full_user_data(user, request=None):
+    """
+    Helper para obtener todos los datos del usuario y su perfil de cliente asociado
+    """
+    from apps.invoicing.models import Customer
+    from apps.companies.models import Company
+    
+    # Obtener o crear perfil de cliente
+    customer, _ = Customer.objects.get_or_create(
+        user=user,
+        defaults={
+            'company': user.company or Company.objects.first(),
+            'name': f"{user.first_name} {user.last_name}".strip() or user.email,
+            'identification': '9999999999',
+            'identification_type': '05',
+            'email': user.email
+        }
+    )
+    
+    profile_picture_url = None
+    if user.profile_picture:
+        if request:
+            profile_picture_url = request.build_absolute_uri(user.profile_picture.url)
+        else:
+            profile_picture_url = user.profile_picture.url
+            
+    return {
+        'id': user.id,
+        'email': user.email,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'full_name': f"{user.first_name} {user.last_name}".strip(),
+        'role': user.role,
+        'can_track': user.can_track,
+        'identification': customer.identification,
+        'identification_type': customer.identification_type,
+        'phone': customer.phone,
+        'address': customer.address,
+        'profile_picture': profile_picture_url,
+        'company': user.company.id if user.company else (get_user_companies_exact(user).first().id if get_user_companies_exact(user).exists() else None)
+    }
 
 
 @api_view(['POST'])
@@ -229,15 +266,7 @@ def auth_status(request):
                 'user_email': user.email,
                 'user_id': user.id,
                 'role': user.role,
-                'user': {
-                    'id': user.id,
-                    'email': user.email,
-                    'first_name': user.first_name,
-                    'full_name': f"{user.first_name} {user.last_name}".strip(),
-                    'role': user.role,
-                    'can_track': user.can_track,
-                    'company': get_user_companies_exact(user).first().id if get_user_companies_exact(user).exists() else (user.company.id if hasattr(user, 'company') and user.company else None)
-                }
+                'user': _get_full_user_data(user, request)
             })
     
     return Response({
@@ -325,14 +354,7 @@ def token_register(request):
             'access': str(refresh.access_token),
             'refresh': str(refresh),
         },
-        'user': {
-            'id': user.id,
-            'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'role': user.role,
-            'can_track': user.can_track
-        }
+        'user': _get_full_user_data(user, request)
     }, status=status.HTTP_201_CREATED)
 
 
@@ -359,3 +381,74 @@ def branding_info(request):
         'favicon_url': favicon_url,
     })
 
+@api_view(['POST'])
+def update_profile(request):
+    """
+    Actualizar perfil del usuario actual (y su perfil de cliente asociado)
+    """
+    user = request.user
+    data = request.data
+    
+    # 1. Actualizar datos del Usuario
+    if 'first_name' in data: user.first_name = data['first_name']
+    if 'last_name' in data: user.last_name = data['last_name']
+    
+    if 'profile_picture' in request.FILES:
+        user.profile_picture = request.FILES['profile_picture']
+        
+    user.save()
+    
+    # 2. Actualizar/Crear perfil de cliente asociado
+    from apps.invoicing.models import Customer
+    from apps.companies.models import Company
+    
+    customer, created = Customer.objects.get_or_create(
+        user=user,
+        defaults={
+            'company': user.company or Company.objects.first(),
+            'name': f"{user.first_name} {user.last_name}".strip() or user.email,
+            'identification': data.get('identification', '9999999999'),
+            'identification_type': '05',
+            'email': user.email
+        }
+    )
+    
+    # Actualizar campos del cliente si se proporcionan
+    try:
+        if not created:
+            customer.name = f"{user.first_name} {user.last_name}".strip() or user.email
+            
+        if 'identification' in data and data['identification']:
+            new_id = data['identification']
+            # Verificar colisión si está cambiando la identificación
+            if new_id != customer.identification:
+                if Customer.objects.filter(company=customer.company, identification=new_id).exclude(id=customer.id).exists():
+                    return Response({
+                        'success': False,
+                        'error': 'IDENTIFICATION_EXISTS',
+                        'message': f'La identificación {new_id} ya está registrada para otro cliente en esta empresa.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                customer.identification = new_id
+                
+        if 'phone' in data: customer.phone = data['phone'] or ''
+        if 'address' in data: customer.address = data['address'] or ''
+        
+        customer.save()
+    except DjangoValidationError as e:
+        return Response({
+            'success': False,
+            'error': 'VALIDATION_ERROR',
+            'message': str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': 'UPDATE_ERROR',
+            'message': f'Error al actualizar datos de cliente: {str(e)}'
+        }, status=status.HTTP_400_BAD_REQUEST)
+        
+    return Response({
+        'success': True,
+        'message': 'Perfil actualizado correctamente',
+        'user': _get_full_user_data(user, request)
+    })

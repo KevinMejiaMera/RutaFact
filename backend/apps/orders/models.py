@@ -14,6 +14,11 @@ class Order(BaseModel):
         ('COMPLETED', _('Completed')),
         ('CANCELLED', _('Cancelled')),
     ]
+
+    DOCUMENT_TYPE_CHOICES = [
+        ('factura', _('Factura SRI')),
+        ('nota_entrega', _('Nota de Entrega Interna')),
+    ]
     
     company = models.ForeignKey(
         Company, 
@@ -31,11 +36,21 @@ class Order(BaseModel):
     delivery_reference = models.TextField(_('delivery reference'), blank=True, help_text=_('Barrio, color de casa, etc.'))
     contact_phone = models.CharField(_('contact phone'), max_length=20, blank=True)
     
+    latitude = models.DecimalField(_('latitude'), max_digits=12, decimal_places=9, null=True, blank=True)
+    longitude = models.DecimalField(_('longitude'), max_digits=12, decimal_places=9, null=True, blank=True)
+    
     status = models.CharField(
         _('status'),
         max_length=20, 
         choices=STATUS_CHOICES, 
         default='PENDING'
+    )
+
+    document_type = models.CharField(
+        _('document type'),
+        max_length=20,
+        choices=DOCUMENT_TYPE_CHOICES,
+        default='factura'
     )
     total_amount = models.DecimalField(
         _('total amount'),
@@ -61,6 +76,16 @@ class Order(BaseModel):
         blank=True,
         related_name='orders',
         verbose_name=_('assigned route')
+    )
+    
+    seller = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sold_orders',
+        verbose_name=_('seller'),
+        help_text=_('Vendedor que completó la entrega.')
     )
     
     notes = models.TextField(_('notes'), blank=True)

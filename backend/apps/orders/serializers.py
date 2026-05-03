@@ -3,6 +3,8 @@ from rest_framework import serializers
 from .models import Order, OrderItem
 from apps.invoicing.models import ProductTemplate, Customer
 from apps.companies.models import Company
+from apps.inventory.services import InventoryService
+from apps.logistics.models import RouteProduct
 from decimal import Decimal, ROUND_HALF_UP
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -24,13 +26,18 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'id', 'company', 'customer', 'customer_name', 'delivery_address', 
-            'delivery_reference', 'contact_phone',
+            'delivery_reference', 'contact_phone', 'latitude', 'longitude',
             'status', 'status_display', 'subtotal_without_tax', 'total_tax', 
             'total_amount', 'invoice', 'notes', 'items', 'created_at'
         ]
         read_only_fields = ['company', 'status', 'total_amount', 'invoice']
 
 class OrderCreateSerializer(serializers.ModelSerializer):
+    customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all(), required=False, allow_null=True)
+    contact_phone = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    latitude = serializers.FloatField(required=False, allow_null=True)
+    longitude = serializers.FloatField(required=False, allow_null=True)
+    
     items = serializers.ListField(
         child=serializers.DictField(),
         write_only=True
@@ -38,73 +45,94 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Order
-        fields = ['delivery_address', 'delivery_reference', 'contact_phone', 'notes', 'items']
+        fields = ['customer', 'delivery_address', 'delivery_reference', 'contact_phone', 'latitude', 'longitude', 'notes', 'items', 'document_type']
     
     def create(self, validated_data):
         from django.db import transaction
-        print(f"DEBUG: OrderCreateSerializer.create data={validated_data}")
         items_data = validated_data.pop('items')
         user = self.context['request'].user
         
         try:
-            billing_type = self.context['request'].data.get('billing_type', 'final_consumer')
-            print(f"DEBUG: Billing Type selected: {billing_type}")
+            # Soportar tanto document_type como billing_type (legacy)
+            document_type = validated_data.pop('document_type', None)
+            billing_type = self.context['request'].data.get('billing_type')
+            
+            if not document_type:
+                if billing_type == 'with_data':
+                    document_type = 'factura'
+                else:
+                    document_type = 'nota_entrega'
             
             with transaction.atomic():
                 # Determinar la empresa
                 user_company = user.company or Company.objects.filter(id=1).first() or Company.objects.first()
                 
-                if billing_type == 'final_consumer':
-                    # BUSCAR O CREAR CONSUMIDOR FINAL GENÉRICO (13 nueves para SRI)
-                    customer, created = Customer.objects.get_or_create(
-                        company=user_company,
-                        identification='9999999999999',
-                        defaults={
-                            'name': 'CONSUMIDOR FINAL',
-                            'identification_type': '07'
-                        }
-                    )
-                    company = user_company
-                else:
-                    # FACTURA CON DATOS: Intentar usar perfil del usuario
+                customer = validated_data.pop('customer', None)
+                contact_phone = validated_data.pop('contact_phone', '') or ''
+                latitude = validated_data.pop('latitude', None)
+                longitude = validated_data.pop('longitude', None)
+                
+                # Redondear coordenadas para evitar errores de precisión en DB
+                if latitude is not None:
+                    latitude = Decimal(str(latitude)).quantize(Decimal('0.000000000'), rounding=ROUND_HALF_UP)
+                if longitude is not None:
+                    longitude = Decimal(str(longitude)).quantize(Decimal('0.000000000'), rounding=ROUND_HALF_UP)
+                
+                if not customer:
+                    # Por defecto intentamos usar el perfil del cliente asociado al usuario
                     try:
                         customer = user.customer_profile
-                        company = customer.company
-                    except Exception:
-                        # Si no existe, crearlo con sus datos de usuario
-                        print(f"DEBUG: Creating profile for user {user.id} on the fly")
-                        customer = Customer.objects.create(
-                            user=user,
-                            company=user_company,
-                            name=f"{user.first_name} {user.last_name}".strip() or user.email,
-                            email=user.email,
-                            identification=user.phone or f"ID{user.id}", # Placeholder si no tiene ID
-                            identification_type='05' # Cédula por defecto
-                        )
-                        company = user_company
+                    except:
+                        # Si no tiene perfil, buscar por identificación o crear uno
+                        identification = user.phone[-10:] if (user.phone and len(user.phone) >= 10) else '9999999999'
+                        
+                        # Si es Nota de Entrega y no tiene datos, forzar Consumidor Final genérico
+                        if document_type == 'nota_entrega' and billing_type != 'with_data':
+                            identification = '9999999999999'
+                        
+                        customer = Customer.objects.filter(company=user_company, identification=identification).first()
+                        
+                        if not customer:
+                            customer = Customer.objects.create(
+                                user=user,
+                                company=user_company,
+                                name=f"{user.first_name} {user.last_name}".strip() or user.email,
+                                email=user.email,
+                                identification=identification,
+                                identification_type='07' if identification == '9999999999999' else '05'
+                            )
+                        elif not customer.user:
+                            # Vincular el usuario si el cliente existía sin usuario
+                            customer.user = user
+                            customer.save()
                 
                 order = Order.objects.create(
-                    company=company,
+                    company=user_company,
                     customer=customer,
                     created_by=user,
+                    document_type=document_type,
+                    contact_phone=contact_phone,
+                    latitude=latitude,
+                    longitude=longitude,
                     **validated_data
                 )
-                print(f"DEBUG: Order base created: {order.id}")
                 
                 if not items_data:
                     raise serializers.ValidationError("El pedido debe contener al menos un producto.")
                 
                 total_amount = Decimal('0')
                 for item_data in items_data:
-                    print(f"DEBUG: Processing item: {item_data}")
-                    product_id = item_data.get('product_id')
+                    product_id = item_data.get('product') or item_data.get('product_id')
                     if not product_id:
-                        raise serializers.ValidationError("Falta product_id en uno de los ítems.")
+                        continue
                         
-                    product = ProductTemplate.objects.get(id=product_id)
+                    try:
+                        product = ProductTemplate.objects.get(id=product_id)
+                    except ProductTemplate.DoesNotExist:
+                        raise serializers.ValidationError(f"Producto con ID {product_id} no encontrado.")
+                        
                     quantity = Decimal(str(item_data.get('quantity', 1)))
                     
-                    # Desglosar IVA: El precio en ProductTemplate es el PRECIO FINAL (Inclusive)
                     tax_rate = product.tax_rate
                     unit_price_inclusive = product.unit_price
                     
@@ -113,10 +141,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     else:
                         unit_price_exclusive = unit_price_inclusive
                     
-                    # REDONDEAR para evitar error de max_digits en Django
                     unit_price_exclusive = unit_price_exclusive.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    
-                    print(f"DEBUG: Product: {product.name}, Inclusive: {unit_price_inclusive}, Exclusive: {unit_price_exclusive}")
                     
                     item = OrderItem.objects.create(
                         order=order,
@@ -125,12 +150,32 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                         unit_price=unit_price_exclusive,
                         tax_rate=tax_rate
                     )
+                    
+                    # 1. Descontar del inventario general (OUT)
+                    try:
+                        InventoryService.register_movement(
+                            company=user_company,
+                            product=product,
+                            movement_type='OUT',
+                            quantity=quantity,
+                            reference=f"ORD-{order.id}",
+                            notes=f"Venta en pedido #{order.id}",
+                            user=user
+                        )
+                    except Exception as e:
+                        print(f"⚠️ Error al registrar movimiento de stock: {e}")
+
+                    # 2. Si hay ruta, actualizar el stock de la furgoneta (quantity_sold)
+                    if hasattr(order, 'route') and order.route:
+                        route_product = RouteProduct.objects.filter(route=order.route, product=product).first()
+                        if route_product:
+                            route_product.quantity_sold += quantity
+                            route_product.save()
+
                     total_amount += item.total
                     
-                # Redondear el total final
                 order.total_amount = total_amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                 order.save()
-                print(f"DEBUG: Order finalized. Total: {total_amount}")
                 
                 return order
         except Exception as e:

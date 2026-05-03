@@ -36,7 +36,10 @@ router.register(r'routes', RouteViewSet, basename='route')
 router.register(r'route-stops', RouteStopViewSet, basename='route-stop')
 
 # 🔑🔑🔑 IMPORTAR AUTH VIEWS PARA TOKENS 🔑🔑🔑
-from apps.api.views.auth_views import token_login, token_logout, token_profile, auth_status, token_register, branding_info
+from apps.api.views.auth_views import (
+    token_login, token_logout, token_profile, auth_status, 
+    token_register, branding_info, update_profile
+)
 from apps.api.views.user_views import UserViewSet
 
 
@@ -200,6 +203,104 @@ class CustomerViewSet(viewsets.ViewSet):
             return Response({'error': str(e)}, status=400)
 
 
+class CustomerAddressViewSet(viewsets.ViewSet):
+    """ViewSet para direcciones de clientes"""
+    permission_classes = [IsAuthenticated]
+    
+    def list(self, request):
+        try:
+            from apps.invoicing.models import CustomerAddress, Customer
+            
+            # Si el usuario es un cliente, solo ve sus direcciones
+            if request.user.role == 'client':
+                customer = Customer.objects.filter(user=request.user).first()
+                if not customer:
+                    return Response([])
+                queryset = CustomerAddress.objects.filter(customer=customer)
+            else:
+                # Otros roles ven por empresa
+                company_id = request.query_params.get('company')
+                queryset = CustomerAddress.objects.filter(customer__company_id=company_id) if company_id else CustomerAddress.objects.none()
+                
+            data = []
+            for addr in queryset:
+                data.append({
+                    'id': addr.id,
+                    'customer': addr.customer.id,
+                    'name': addr.name,
+                    'address': addr.address,
+                    'reference': addr.reference,
+                    'is_default': addr.is_default,
+                    'latitude': str(addr.latitude) if addr.latitude else None,
+                    'longitude': str(addr.longitude) if addr.longitude else None
+                })
+            return Response(data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+    def create(self, request):
+        try:
+            from apps.invoicing.models import CustomerAddress, Customer
+            from apps.companies.models import Company
+            data = request.data
+            
+            customer_id = data.get('customer')
+            if not customer_id and request.user.role == 'client':
+                customer = Customer.objects.filter(user=request.user).first()
+                if not customer:
+                    # Crear perfil de cliente si no existe
+                    user = request.user
+                    user_company = user.company or Company.objects.first()
+                    customer = Customer.objects.create(
+                        user=user,
+                        company=user_company,
+                        name=f"{user.first_name} {user.last_name}".strip() or user.email,
+                        email=user.email,
+                        identification=user.phone[-10:] if (user.phone and len(user.phone) >= 10) else '9999999999',
+                        identification_type='05'
+                    )
+                customer_id = customer.id
+            
+            if not customer_id:
+                return Response({'error': 'customer is required'}, status=400)
+                
+            from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+            lat = data.get('latitude')
+            lng = data.get('longitude')
+            
+            try:
+                if lat is not None and str(lat).strip() != '':
+                    lat = Decimal(str(lat)).quantize(Decimal('0.000000001'), rounding=ROUND_HALF_UP)
+                else:
+                    lat = None
+                    
+                if lng is not None and str(lng).strip() != '':
+                    lng = Decimal(str(lng)).quantize(Decimal('0.000000001'), rounding=ROUND_HALF_UP)
+                else:
+                    lng = None
+            except (InvalidOperation, TypeError, ValueError):
+                lat = None
+                lng = None
+
+            addr = CustomerAddress.objects.create(
+                customer_id=customer_id,
+                name=data.get('name', 'Mi Dirección'),
+                address=data.get('address'),
+                reference=data.get('reference', ''),
+                is_default=data.get('is_default', False),
+                latitude=lat,
+                longitude=lng
+            )
+            
+            return Response({
+                'id': addr.id,
+                'name': addr.name,
+                'address': addr.address
+            }, status=201)
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+
+
 class ProductViewSet(viewsets.ViewSet):
     """ViewSet simple para productos"""
     permission_classes = [IsAuthenticated]
@@ -228,6 +329,10 @@ class ProductViewSet(viewsets.ViewSet):
                 stock_obj = ProductStock.objects.filter(product=product, company_id=company_id).first()
                 stock_qty = float(stock_obj.quantity) if stock_obj else 0.0
 
+                image_url = None
+                if product.image:
+                    image_url = request.build_absolute_uri(product.image.url)
+
                 data.append({
                     'id': product.id,
                     'main_code': product.main_code,
@@ -239,7 +344,8 @@ class ProductViewSet(viewsets.ViewSet):
                     'tax_code': product.tax_code,
                     'company_id': product.company.id,
                     'company_name': product.company.business_name,
-                    'stock': stock_qty
+                    'stock': stock_qty,
+                    'image_url': image_url
                 })
             
             return Response(data)
@@ -315,6 +421,7 @@ router = DefaultRouter()
 router.register(r'companies', NuclearCompanyViewSet, basename='company')
 router.register(r'tracking', TrackingViewSet, basename='tracking')
 router.register(r'customers', CustomerViewSet, basename='customer')
+router.register(r'customer-addresses', CustomerAddressViewSet, basename='customer-address')
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'vehicles', VehicleViewSet, basename='vehicle')
 router.register(r'routes', RouteViewSet, basename='route')
@@ -339,6 +446,7 @@ auth_urlpatterns = [
     path('auth/register/', token_register, name='token-register'),
     path('auth/logout/', token_logout, name='token-logout'),
     path('auth/profile/', token_profile, name='token-profile'),
+    path('auth/profile/update/', update_profile, name='token-profile-update'),
     path('auth/status/', auth_status, name='auth-status'),
     path('branding/', branding_info, name='branding-info'),
 ]

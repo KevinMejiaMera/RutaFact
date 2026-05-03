@@ -263,6 +263,7 @@
                                     <th>Fecha</th>
                                     <th>Número / Tipo</th>
                                     <th>Cliente</th>
+                                    <th>Vendedor</th>
                                     <th>Total</th>
                                     <th>Estado</th>
                                     <th style="text-align: right;">Acciones</th>
@@ -279,6 +280,16 @@
                                     <td>
                                         <div style="color: white; font-weight: 500;">{{ invoice.customer_name }}</div>
                                         <div style="font-size: 10px; color: var(--text-dim);">{{ invoice.customer_identification }}</div>
+                                    </td>
+                                    <td>
+                                        <div style="background: rgba(255,255,255,0.03); padding: 4px 10px; border-radius: 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px;">
+                                            <i class="fas fa-user-tag" style="color: var(--primary);"></i>
+                                            {% if invoice.created_by %}
+                                                {{ invoice.created_by.get_full_name|default:invoice.created_by.email }}
+                                            {% else %}
+                                                --
+                                            {% endif %}
+                                        </div>
                                     </td>
                                     <td style="color: white; font-weight: 600;">${{ invoice.total_amount|floatformat:2 }}</td>
                                     <td>
@@ -338,6 +349,7 @@
                                     <th>Fecha</th>
                                     <th>Número / Tipo</th>
                                     <th>Cliente</th>
+                                    <th>Vendedor</th>
                                     <th>Total</th>
                                     <th>Estado</th>
                                     <th style="text-align: right;">Acciones</th>
@@ -354,6 +366,16 @@
                                     <td>
                                         <div style="color: white; font-weight: 500;">{{ invoice.customer_name }}</div>
                                         <div style="font-size: 10px; color: var(--text-dim);">{{ invoice.customer_identification }}</div>
+                                    </td>
+                                    <td>
+                                        <div style="background: rgba(255,255,255,0.03); padding: 4px 10px; border-radius: 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px;">
+                                            <i class="fas fa-user-tag" style="color: var(--primary);"></i>
+                                            {% if invoice.created_by %}
+                                                {{ invoice.created_by.get_full_name|default:invoice.created_by.email }}
+                                            {% else %}
+                                                --
+                                            {% endif %}
+                                        </div>
                                     </td>
                                     <td style="color: white; font-weight: 600;">${{ invoice.total_amount|floatformat:2 }}</td>
                                     <td>
@@ -372,20 +394,20 @@
                                                     {% if cn %}
                                                         <div style="display: flex; align-items: center; gap: 5px; color: {% if cn.status == 'AUTHORIZED' %}#4CAF50{% elif cn.status == 'ERROR' or cn.status == 'REJECTED' %}#ff5252{% else %}var(--text-dim){% endif %};">
                                                             {% if cn.status == 'AUTHORIZED' %}
-                                                                <i class="fas fa-check-circle"></i>
-                                                                <span>Nota de Crédito Autorizada</span>
-                                                                <a href="{{ cn.pdf_file.url }}" class="btn-download-pdf" style="height: 24px; padding: 0 8px; font-size: 10px; margin-left: 5px;" target="_blank">
-                                                                    <i class="fas fa-file-pdf"></i> PDF
-                                                                </a>
+                                                                 <i class="fas fa-check-circle"></i>
+                                                                 <span>Nota de Crédito Autorizada</span>
+                                                                 <a href="{{ cn.pdf_file.url }}" class="btn-download-pdf" style="height: 24px; padding: 0 8px; font-size: 10px; margin-left: 5px;" target="_blank">
+                                                                     <i class="fas fa-file-pdf"></i> PDF
+                                                                 </a>
                                                             {% elif cn.status == 'ERROR' or cn.status == 'REJECTED' %}
-                                                                <i class="fas fa-exclamation-circle"></i>
-                                                                <span>Error en Nota de Crédito</span>
-                                                                <a href="{% url 'admin_retry_credit_note' cn.id %}" style="color: var(--primary); margin-left: 5px;" title="Reintentar">
-                                                                    <i class="fas fa-redo-alt"></i>
-                                                                </a>
+                                                                 <i class="fas fa-exclamation-circle"></i>
+                                                                 <span>Error en Nota de Crédito</span>
+                                                                 <a href="{% url 'admin_retry_credit_note' cn.id %}" style="color: var(--primary); margin-left: 5px;" title="Reintentar">
+                                                                     <i class="fas fa-redo-alt"></i>
+                                                                 </a>
                                                             {% else %}
-                                                                <i class="fas fa-spinner fa-spin"></i>
-                                                                <span>Nota de Crédito en proceso ({{ cn.get_status_display }})</span>
+                                                                 <i class="fas fa-spinner fa-spin"></i>
+                                                                 <span>Nota de Crédito en proceso ({{ cn.get_status_display }})</span>
                                                             {% endif %}
                                                         </div>
                                                         {% if cn.sri_response and cn.status == 'ERROR' %}

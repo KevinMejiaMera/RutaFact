@@ -1,0 +1,234 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Notas de Venta - RutaFact{% endblock %}
+
+{% block extra_css %}
+<style>
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 14px;
+        border-radius: 30px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        border: 1px solid transparent;
+    }
+    .status-internal { background: rgba(155, 176, 168, 0.05); color: var(--accent); border-color: rgba(155, 176, 168, 0.1); }
+    .status-invoice { background: rgba(176, 139, 144, 0.05); color: var(--primary); border-color: rgba(176, 139, 144, 0.1); }
+    
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th { text-align: left; padding: 18px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+    .data-table td { padding: 18px; border-bottom: 1px solid var(--border); color: var(--text-main); font-size: 13px; }
+    .data-table tr:hover { background: rgba(255,255,255,0.01); }
+
+    .seller-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255,255,255,0.03);
+        padding: 4px 10px;
+        border-radius: 8px;
+        font-size: 11px;
+        color: var(--text-main);
+        border: 1px solid var(--border);
+    }
+    
+    .seller-badge i { color: var(--primary); font-size: 10px; }
+
+    .tabs-header {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 25px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 15px;
+    }
+
+    .tab-btn {
+        background: none;
+        border: none;
+        color: var(--text-dim);
+        padding: 10px 20px;
+        cursor: pointer;
+        font-weight: 600;
+        border-radius: 10px;
+        transition: 0.3s;
+    }
+
+    .tab-btn.active {
+        background: rgba(176, 139, 144, 0.1);
+        color: var(--primary);
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <div>
+            <h1 style="font-size: 28px; color: white; margin-bottom: 5px;">Notas de Venta Internas</h1>
+            <p style="color: var(--text-dim);">Registros de ventas y entregas sin validez fiscal (SRI).</p>
+        </div>
+        <div style="display: flex; gap: 15px;">
+            <button class="btn-primary" onclick="window.location.reload()"><i class="fas fa-sync-alt"></i> Actualizar</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="tabs-header">
+            <button class="tab-btn active" onclick="switchTab('orders')">Pedidos Completados ({{ order_notes|length }})</button>
+            <button class="tab-btn" onclick="switchTab('routes')">Ventas en Ruta ({{ route_sales|length }})</button>
+        </div>
+
+        <!-- SECCIÓN: PEDIDOS -->
+        <div id="tab-orders" class="tab-content active">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Pedido #</th>
+                            <th>Cliente</th>
+                            <th>Vendedor / Responsable</th>
+                            <th style="text-align: right;">Total</th>
+                            <th style="text-align: right;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in order_notes %}
+                        <tr>
+                            <td>{{ order.updated_at|date:"d/m/Y H:i" }}</td>
+                            <td style="color: white; font-weight: 600;">#{{ order.id }}</td>
+                            <td>
+                                <div style="color: white; font-weight: 500;">{{ order.customer.name }}</div>
+                                <div style="font-size: 10px; color: var(--text-dim);">{{ order.customer.identification }}</div>
+                            </td>
+                            <td>
+                                <div class="seller-badge">
+                                    <i class="fas fa-user-tag"></i>
+                                    {% if order.seller %}
+                                        {{ order.seller.get_full_name|default:order.seller.email }}
+                                    {% elif order.created_by %}
+                                        {{ order.created_by.get_full_name|default:order.created_by.email }}
+                                    {% else %}
+                                        Sistema
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td style="text-align: right; color: var(--primary); font-weight: 700;">
+                                ${{ order.total_amount|floatformat:2 }}
+                            </td>
+                            <td style="text-align: right;">
+                                <button class="action-btn" onclick="alert('Detalle de pedido en construcción')" title="Ver Detalle">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                {% if order.latitude and order.longitude %}
+                                <a href="https://www.google.com/maps?q={{ order.latitude }},{{ order.longitude }}" target="_blank" class="action-btn" title="Ubicación GPS" style="color: #4285F4;">
+                                    <i class="fas fa-map-marker-alt"></i>
+                                </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 60px; color: var(--text-dim);">
+                                <i class="fas fa-file-invoice fa-3x" style="opacity: 0.1; margin-bottom: 15px;"></i>
+                                <p>No hay pedidos completados como Nota de Entrega.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SECCIÓN: VENTAS EN RUTA -->
+        <div id="tab-routes" class="tab-content">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha/Hora</th>
+                            <th>Ruta</th>
+                            <th>Cliente</th>
+                            <th>Vendedor</th>
+                            <th>Tipo / SRI</th>
+                            <th style="text-align: right;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sale in route_sales %}
+                        <tr>
+                            <td>{{ sale.created_at|date:"d/m/Y H:i" }}</td>
+                            <td>
+                                <div style="color: white; font-weight: 500;">{{ sale.route.name }}</div>
+                                <div style="font-size: 10px; color: var(--text-dim);">ID Ruta: {{ sale.route.id }}</div>
+                            </td>
+                            <td>
+                                <div style="color: white;">{{ sale.customer_name }}</div>
+                            </td>
+                            <td>
+                                <div class="seller-badge">
+                                    <i class="fas fa-truck-ramp-box"></i>
+                                    {% if sale.seller %}
+                                        {{ sale.seller.get_full_name|default:sale.seller.email }}
+                                    {% elif sale.created_by %}
+                                        {{ sale.created_by.get_full_name|default:sale.created_by.email }}
+                                    {% else %}
+                                        Repartidor
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td>
+                                {% if sale.invoice %}
+                                    <span class="status-pill status-invoice">
+                                        <i class="fas fa-file-invoice"></i> Factura: {{ sale.invoice.document_number }}
+                                    </span>
+                                {% else %}
+                                    <span class="status-pill status-internal">
+                                        <i class="fas fa-file-contract"></i> Interno (Nota de Venta)
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: right;">
+                                <button class="action-btn" onclick="alert('Detalle de entrega en construcción')" title="Ver Detalle">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                {% if sale.latitude and sale.longitude %}
+                                <a href="https://www.google.com/maps?q={{ sale.latitude }},{{ sale.longitude }}" target="_blank" class="action-btn" title="Ubicación GPS" style="color: #4285F4;">
+                                    <i class="fas fa-map-marker-alt"></i>
+                                </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 60px; color: var(--text-dim);">
+                                <i class="fas fa-truck fa-3x" style="opacity: 0.1; margin-bottom: 15px;"></i>
+                                <p>No hay ventas directas en ruta registradas.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+        event.currentTarget.classList.add('active');
+    }
+</script>
+{% endblock %}

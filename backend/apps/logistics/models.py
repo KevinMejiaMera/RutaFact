@@ -219,7 +219,26 @@ class RouteDelivery(BaseModel):
     """Registro individual de una entrega/venta realizada en la ruta"""
     route = models.ForeignKey(Route, on_delete=models.CASCADE, related_name='deliveries')
     customer_name = models.CharField(_('customer name'), max_length=255)
+    latitude = models.DecimalField(_('latitude'), max_digits=12, decimal_places=9, null=True, blank=True)
+    longitude = models.DecimalField(_('longitude'), max_digits=12, decimal_places=9, null=True, blank=True)
     notes = models.TextField(_('notes'), blank=True)
+    seller = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='route_deliveries',
+        verbose_name=_('seller')
+    )
+    
+    invoice = models.OneToOneField(
+        'sri_integration.ElectronicDocument',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='route_delivery',
+        verbose_name=_('invoice')
+    )
     
     class Meta:
         verbose_name = _('Route Delivery')

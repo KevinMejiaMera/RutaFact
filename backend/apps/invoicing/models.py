@@ -97,7 +97,6 @@ class Customer(BaseModel):
         blank=True
     )
     
-    # Configuración de facturación
     default_payment_method = models.CharField(
         _('default payment method'),
         max_length=50,
@@ -113,7 +112,6 @@ class Customer(BaseModel):
         help_text=_('Credit limit for this customer')
     )
     
-    # Información adicional
     notes = models.TextField(
         _('notes'),
         blank=True,
@@ -128,6 +126,33 @@ class Customer(BaseModel):
     
     def __str__(self):
         return f"{self.name} ({self.identification})"
+
+
+class CustomerAddress(BaseModel):
+    """
+    Direcciones guardadas de un cliente
+    """
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name='addresses',
+        verbose_name=_('customer')
+    )
+    name = models.CharField(_('name'), max_length=100, help_text=_('Ej: Mi Casa, Oficina, Trabajo'))
+    address = models.TextField(_('address'))
+    reference = models.TextField(_('reference'), blank=True, help_text=_('Barrio, color de casa, etc.'))
+    is_default = models.BooleanField(_('is default'), default=False)
+    
+    latitude = models.DecimalField(_('latitude'), max_digits=12, decimal_places=9, null=True, blank=True)
+    longitude = models.DecimalField(_('longitude'), max_digits=12, decimal_places=9, null=True, blank=True)
+
+    class Meta:
+        verbose_name = _('Customer Address')
+        verbose_name_plural = _('Customer Addresses')
+        ordering = ['-is_default', '-created_at']
+
+    def __str__(self):
+        return f"{self.name} - {self.customer.name}"
 
 
 class ProductCategory(BaseModel):
@@ -493,5 +518,4 @@ class PaymentMethod(BaseModel):
         ordering = ['name']
     
     def __str__(self):
-        return self.name
         return self.name

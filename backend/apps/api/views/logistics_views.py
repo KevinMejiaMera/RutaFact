@@ -67,12 +67,13 @@ class RouteViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def record_delivery(self, request, pk=None):
-        """Registra productos entregados y genera factura electrónica completa"""
+        """Registra productos entregados y genera factura electrónica (opcional)"""
         route = self.get_object()
         deliveries = request.data.get('deliveries', [])
         customer_id = request.data.get('customer_id')
         customer_name = request.data.get('customer_name', 'Consumidor Final')
         notes = request.data.get('notes', '')
+        billing_type = request.data.get('billing_type', 'invoice') # invoice o delivery_note
         
         from django.db import transaction
         from apps.logistics.models import RouteDelivery, RouteDeliveryItem
@@ -88,16 +89,20 @@ class RouteViewSet(viewsets.ModelViewSet):
                 delivery_record = RouteDelivery.objects.create(
                     route=route,
                     customer_name=customer_name,
-                    notes=notes
+                    notes=f"{notes} [TIPO: {billing_type.upper()}]".strip(),
+                    seller=request.user,
+                    latitude=request.data.get('latitude'),
+                    longitude=request.data.get('longitude')
                 )
                 
                 customer = None
-                if customer_id:
+                if customer_id and billing_type == 'invoice':
                     customer = Customer.objects.filter(id=customer_id, company=route.company).first()
                 
                 electronic_doc = None
-                if customer:
-                    # Crear factura en borrador (el modelo genera número y clave solo)
+                # SOLO CREAR FACTURA SI ES TIPO INVOICE Y HAY CLIENTE SELECCIONADO
+                # Si es delivery_note, crear documento interno
+                if billing_type == 'invoice' and customer:
                     electronic_doc = ElectronicDocument.objects.create(
                         company=route.company,
                         document_type='INVOICE',
@@ -108,6 +113,20 @@ class RouteViewSet(viewsets.ModelViewSet):
                         customer_address=customer.address or '',
                         customer_email=customer.email or '',
                         status='DRAFT'
+                    )
+                elif billing_type == 'delivery_note':
+                    # Nota de Entrega Interna
+                    electronic_doc = ElectronicDocument.objects.create(
+                        company=route.company,
+                        document_type='INTERNAL_NOTE',
+                        document_number=f"INT-R-{delivery_record.id:06d}",
+                        issue_date=timezone.now().date(),
+                        customer_identification_type='07', # Consumidor Final por defecto
+                        customer_identification='9999999999999',
+                        customer_name=customer_name,
+                        customer_address='',
+                        customer_email='',
+                        status='INTERNAL'
                     )
                 
                 total_subtotal = Decimal('0.00')
@@ -130,10 +149,9 @@ class RouteViewSet(viewsets.ModelViewSet):
                             quantity=qty
                         )
                         
-                        # Detalle de factura
+                        # Detalle de factura/nota
                         if electronic_doc:
                             unit_price = rp.product.unit_price
-                            # SRI requiere base imponible (subtotal antes de impuestos)
                             subtotal = (qty * unit_price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                             tax_amount = (subtotal * Decimal('0.15')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                             
@@ -146,50 +164,58 @@ class RouteViewSet(viewsets.ModelViewSet):
                                 subtotal=subtotal
                             )
                             
-                            # Impuesto por ITEM (Obligatorio SRI)
-                            DocumentTax.objects.create(
-                                document=electronic_doc,
-                                item=doc_item,
-                                tax_code='2', # IVA
-                                percentage_code='4', # 15% según el modelo
-                                rate=Decimal('15.00'),
-                                taxable_base=subtotal,
-                                tax_amount=tax_amount
-                            )
+                            if electronic_doc.document_type == 'INVOICE':
+                                # Impuesto solo para SRI
+                                DocumentTax.objects.create(
+                                    document=electronic_doc,
+                                    item=doc_item,
+                                    tax_code='2', 
+                                    percentage_code='4',
+                                    rate=Decimal('15.00'),
+                                    taxable_base=subtotal,
+                                    tax_amount=tax_amount
+                                )
                             
                             total_subtotal += subtotal
                             total_tax += tax_amount
-                
-                # Finalizar factura y añadir resumen de impuestos y pagos
+                # Finalizar factura/nota con redondeo de seguridad
                 if electronic_doc:
-                    electronic_doc.subtotal_without_tax = total_subtotal
-                    electronic_doc.total_tax = total_tax
-                    electronic_doc.total_amount = total_subtotal + total_tax
+                    electronic_doc.subtotal_without_tax = total_subtotal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    electronic_doc.total_tax = total_tax.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    electronic_doc.total_amount = (total_subtotal + total_tax).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                     
-                    # Resumen de Impuesto a nivel de DOCUMENTO (Obligatorio SRI)
-                    DocumentTax.objects.create(
-                        document=electronic_doc,
-                        tax_code='2',
-                        percentage_code='4',
-                        rate=Decimal('15.00'),
-                        taxable_base=total_subtotal,
-                        tax_amount=total_tax
-                    )
+                    if electronic_doc.document_type == 'INVOICE':
+                        # Resumen de Impuesto SRI
+                        DocumentTax.objects.create(
+                            document=electronic_doc,
+                            tax_code='2',
+                            percentage_code='4',
+                            rate=Decimal('15.00'),
+                            taxable_base=total_subtotal,
+                            tax_amount=total_tax
+                        )
+                        
+                        DocumentPayment.objects.create(
+                            document=electronic_doc,
+                            payment_method_code='01', 
+                            amount=electronic_doc.total_amount,
+                            payment_term=0,
+                            time_unit='dias'
+                        )
+                        
+                        electronic_doc.status = 'PENDING'
+                        electronic_doc.save()
+                        
+                        # Enviar al SRI solo si es INVOICE
+                        transaction.on_commit(lambda: process_document_async.delay(electronic_doc.id))
+                    else:
+                        # INTERNAL_NOTE
+                        electronic_doc.status = 'INTERNAL'
+                        electronic_doc.save()
                     
-                    # Forma de Pago por defecto: Efectivo (Obligatorio SRI)
-                    DocumentPayment.objects.create(
-                        document=electronic_doc,
-                        payment_method_code='01', # Efectivo
-                        amount=electronic_doc.total_amount,
-                        payment_term=0,
-                        time_unit='dias'
-                    )
-                    
-                    electronic_doc.status = 'PENDING'
-                    electronic_doc.save()
-                    
-                    # Enviar al SRI de forma asíncrona
-                    transaction.on_commit(lambda: process_document_async.delay(electronic_doc.id))
+                    # Vincular la factura/nota al registro de entrega
+                    delivery_record.invoice = electronic_doc
+                    delivery_record.save()
 
             msg = 'Entrega registrada correctamente'
             if electronic_doc:

@@ -335,7 +335,7 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.UserRateThrottle"
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": config('API_THROTTLE_ANON', default='100/day'),
+        "anon": config('API_THROTTLE_ANON', default='100/minute'),
         "user": config('API_THROTTLE_USER', default='1000/day')
     }
 }

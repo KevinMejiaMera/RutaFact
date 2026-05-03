@@ -5,6 +5,7 @@ apps/core/views.py
 """
 
 import logging
+import json
 from django.db import models
 from django.shortcuts import get_object_or_404, render, redirect
 from django.http import JsonResponse
@@ -292,8 +293,8 @@ def admin_users_view(request):
     companies = get_user_companies_secure(request.user)
     company = companies.first()
     
-    # Traemos a TODOS los usuarios del sistema para poder asignarlos
-    all_users = User.objects.all().order_by('email')
+    # Traemos a TODOS los usuarios del sistema con su perfil de cliente asociado
+    all_users = User.objects.all().select_related('customer_profile').order_by('email')
 
     context = {
         'company': company,
@@ -362,6 +363,93 @@ def admin_create_user(request):
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)})
     return JsonResponse({'status': 'error', 'message': 'Método no permitido'})
+
+@login_required
+@user_passes_test(is_admin)
+def admin_update_user(request, user_id):
+    """Vista para actualizar datos de un usuario desde el admin"""
+    if request.method == 'POST':
+        try:
+            from apps.users.models import User
+            user = User.objects.get(id=user_id)
+            data = json.loads(request.body)
+            
+            user.email = data.get('email', user.email)
+            user.first_name = data.get('first_name', user.first_name)
+            user.last_name = data.get('last_name', user.last_name)
+            user.role = data.get('role', user.role)
+            
+            password = data.get('password')
+            if password and password.strip():
+                user.set_password(password)
+                
+            user.save()
+
+            # Sincronizar/Crear perfil de Cliente asociado
+            from apps.invoicing.models import Customer
+            identification = data.get('identification')
+            address = data.get('address')
+            phone = data.get('phone', user.phone)
+
+            customer, created = Customer.objects.get_or_create(
+                user=user,
+                defaults={
+                    'company': user.company,
+                    'name': f"{user.first_name} {user.last_name}".strip() or user.email,
+                    'identification': identification or '9999999999',
+                    'identification_type': '05',
+                    'email': user.email,
+                    'phone': phone,
+                    'address': address or 'S/N'
+                }
+            )
+
+            if not created:
+                if identification: customer.identification = identification
+                if address: customer.address = address
+                if phone: customer.phone = phone
+                customer.name = f"{user.first_name} {user.last_name}".strip() or user.email
+                customer.email = user.email
+                customer.save()
+
+            return JsonResponse({'status': 'success', 'message': 'Usuario y perfil de cliente actualizados exitosamente'})
+        except User.DoesNotExist:
+            return JsonResponse({'status': 'error', 'message': 'Usuario no encontrado'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
+    return JsonResponse({'status': 'error', 'message': 'Método no permitido'})
+
+@login_required
+@user_passes_test(is_admin)
+def admin_delivery_notes_view(request):
+    """Vista para listar Notas de Entrega (Internas) de Pedidos y Rutas"""
+    from apps.logistics.models import RouteDelivery
+    companies = get_user_companies_secure(request.user)
+    company = companies.first()
+    
+    order_notes = []
+    route_sales = []
+    
+    if company:
+        # 1. Pedidos completados como Nota de Entrega (sin factura)
+        order_notes = Order.objects.filter(
+            company=company,
+            status='COMPLETED',
+            invoice__isnull=True
+        ).select_related('customer', 'seller', 'created_by').order_by('-updated_at')
+        
+        # 2. Ventas directas de ruta (RouteDelivery)
+        route_sales = RouteDelivery.objects.filter(
+            route__company=company
+        ).select_related('route', 'seller', 'invoice').order_by('-created_at')
+
+    context = {
+        'company': company,
+        'order_notes': order_notes,
+        'route_sales': route_sales,
+        'user': request.user,
+    }
+    return render(request, 'admin/delivery_notes.html', context)
 
 @login_required
 @user_passes_test(is_admin)
@@ -1606,8 +1694,8 @@ def admin_orders_view(request):
     completed_orders = []
     
     if company:
-        pending_orders = Order.objects.filter(company=company, status='PENDING').order_by('-created_at')
-        completed_orders = Order.objects.filter(company=company, status='COMPLETED').order_by('-created_at')
+        pending_orders = Order.objects.filter(company=company, status='PENDING').select_related('customer').order_by('-created_at')
+        completed_orders = Order.objects.filter(company=company, status='COMPLETED').select_related('customer', 'seller', 'invoice').order_by('-created_at')
 
     context = {
         'company': company,
@@ -1628,21 +1716,66 @@ def admin_complete_order(request, pk):
     companies = get_user_companies_secure(request.user)
     order = get_object_or_404(Order, pk=pk, company__in=companies)
     
-    # Simular un request de DRF para reutilizar la lógica de complete_and_invoice
-    factory = Request(request)
-    factory._user = request.user  # Asignar explícitamente el usuario autenticado
+    # Obtener el tipo de documento (factura o nota_de_entrega)
+    document_type = request.POST.get('document_type') or request.GET.get('document_type', 'factura')
+    
+    # Simular un request de DRF con datos
+    from rest_framework.test import APIRequestFactory
+    factory = APIRequestFactory()
+    # Creamos un request POST aunque sea GET para que tenga .data
+    drf_request = factory.post(f'/api/orders/{pk}/complete_and_invoice/', {'document_type': document_type})
+    drf_request.user = request.user
+    
+    # Envolverlo en el Request de DRF que espera el viewset
+    from rest_framework.request import Request as DRFRequest
+    wrapped_request = DRFRequest(drf_request)
+    
+    # Forzar autenticación en el request de DRF
+    from rest_framework.test import force_authenticate
+    force_authenticate(wrapped_request, user=request.user)
+    
     viewset = OrderViewSet()
-    viewset.request = factory
+    viewset.request = wrapped_request
     viewset.action = 'complete_and_invoice'
     viewset.kwargs = {'pk': pk}
     
-    response = viewset.complete_and_invoice(factory, pk=pk)
-    
-    if response.status_code == 200:
-        messages.success(request, "Pedido completado y factura generada exitosamente.")
-    else:
-        error_msg = response.data.get('message', 'Error desconocido')
-        messages.error(request, f"Error al procesar pedido: {error_msg}")
+    try:
+        response = viewset.complete_and_invoice(wrapped_request, pk=pk)
+        if response.status_code == 200:
+            messages.success(request, f"Pedido #{pk} completado como {document_type} exitosamente.")
+        else:
+            error_msg = response.data.get('message', response.data.get('error', 'Error desconocido'))
+            messages.error(request, f"Error al procesar pedido: {error_msg}")
+    except Exception as e:
+        messages.error(request, f"Error crítico: {str(e)}")
         
     return redirect('admin_orders')
 
+@login_required
+@user_passes_test(is_admin)
+def admin_cancel_order(request, pk):
+    """Cancelar un pedido desde la web (Reutiliza lógica del API)"""
+    from apps.orders.models import Order
+    from apps.api.views.order_views import OrderViewSet
+    from rest_framework.request import Request
+    
+    companies = get_user_companies_secure(request.user)
+    order = get_object_or_404(Order, pk=pk, company__in=companies)
+    
+    # Simular un request de DRF
+    factory = Request(request)
+    factory._user = request.user
+    viewset = OrderViewSet()
+    viewset.request = factory
+    viewset.action = 'cancel'
+    viewset.kwargs = {'pk': pk}
+    
+    response = viewset.cancel(factory, pk=pk)
+    
+    if response.status_code == 200:
+        messages.success(request, "Pedido cancelado correctamente y stock revertido.")
+    else:
+        error_msg = response.data.get('message', response.data.get('error', 'Error desconocido'))
+        messages.error(request, f"Error al cancelar pedido: {error_msg}")
+        
+    return redirect('admin_orders')

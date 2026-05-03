@@ -141,9 +141,9 @@ class InventoryService:
         movement_type: 'IN' o 'OUT'
         """
         from apps.inventory.models import ProductStock, StockMovement
-        from decimal import Decimal
+        from decimal import Decimal, ROUND_HALF_UP
         
-        quantity = Decimal(str(quantity))
+        quantity = Decimal(str(quantity)).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
         
         stock, created = ProductStock.objects.get_or_create(
             company=company,

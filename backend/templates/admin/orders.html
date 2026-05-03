@@ -55,6 +55,14 @@
                             <button onclick="showOrderDetails({{ order.id }})" class="action-btn" title="Ver Detalles">
                                 <i class="fas fa-eye"></i>
                             </button>
+                            <a href="{% url 'admin_cancel_order' order.pk %}" class="action-btn" title="Cancelar Pedido" style="color: #ff4d4d;" onclick="return confirm('¿Estás seguro de cancelar este pedido? Se revertirá el stock.')">
+                                <i class="fas fa-times-circle"></i>
+                            </a>
+                            {% if order.latitude and order.longitude %}
+                            <a href="https://www.google.com/maps?q={{ order.latitude }},{{ order.longitude }}" target="_blank" class="action-btn" title="Ver en Google Maps" style="color: #4285F4;">
+                                <i class="fas fa-map-marker-alt"></i>
+                            </a>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>
@@ -74,6 +82,7 @@
                 <tr style="color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">
                     <th style="padding: 10px 20px; text-align: left;">ID / Fecha</th>
                     <th style="padding: 10px 20px; text-align: left;">Cliente</th>
+                    <th style="padding: 10px 20px; text-align: left;">Vendedor</th>
                     <th style="padding: 10px 20px; text-align: left;">Factura Asociada</th>
                     <th style="padding: 10px 20px; text-align: right;">Total</th>
                     <th style="padding: 10px 20px; text-align: center;">Estado SRI</th>
@@ -88,6 +97,18 @@
                     </td>
                     <td style="padding: 20px;">
                         <span style="display: block; font-weight: 600;">{{ order.customer.name }}</span>
+                    </td>
+                    <td style="padding: 20px;">
+                        <div style="background: rgba(255,255,255,0.03); padding: 4px 10px; border-radius: 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-user-tag" style="color: var(--primary);"></i>
+                            {% if order.seller %}
+                                {{ order.seller.get_full_name|default:order.seller.email }}
+                            {% elif order.created_by %}
+                                {{ order.created_by.get_full_name|default:order.created_by.email }}
+                            {% else %}
+                                --
+                            {% endif %}
+                        </div>
                     </td>
                     <td style="padding: 20px;">
                         {% if order.invoice %}
@@ -211,6 +232,20 @@
                     <p style="margin-bottom: 10px; color: var(--text-dim);">IVA: $ ${parseFloat(data.total_tax).toFixed(2)}</p>
                     <p style="font-size: 18px; font-weight: 700; color: var(--primary);">TOTAL: $ ${parseFloat(data.total_amount).toFixed(2)}</p>
                 </div>
+                
+                ${data.status === 'PENDING' ? `
+                    <div style="margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
+                        <a href="/dashboard/orders/${orderId}/complete/?document_type=factura" class="btn-primary" style="background: #00c853; font-size: 11px; padding: 8px 12px; text-decoration: none; border-radius: 8px; color: white; display: inline-flex; align-items: center; gap: 5px;">
+                            <i class="fas fa-file-invoice"></i> FACTURA SRI
+                        </a>
+                        <a href="/dashboard/orders/${orderId}/complete/?document_type=nota_entrega" class="btn-primary" style="background: #4285F4; font-size: 11px; padding: 8px 12px; text-decoration: none; border-radius: 8px; color: white; display: inline-flex; align-items: center; gap: 5px;">
+                            <i class="fas fa-clipboard-check"></i> NOTA VENTA
+                        </a>
+                        <a href="/dashboard/orders/${orderId}/cancel/" class="btn-primary" style="background: rgba(255, 77, 77, 0.1); color: #ff4d4d; border: 1px solid #ff4d4d; font-size: 11px; padding: 8px 12px; text-decoration: none; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px;" onclick="return confirm('¿Estás seguro de anular este pedido?')">
+                            <i class="fas fa-times"></i> ANULAR
+                        </a>
+                    </div>
+                ` : ''}
             `;
             
             content.innerHTML = html;

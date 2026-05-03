@@ -596,6 +596,7 @@ class ElectronicDocument(BaseModel):
         ('RETENTION', _('Retention')),
         ('REMISSION_GUIDE', _('Remission Guide')),
         ('PURCHASE_SETTLEMENT', _('Purchase Settlement')),
+        ('INTERNAL_NOTE', _('Internal Note (No SRI)')),
     ]
     
     STATUS_CHOICES = [
@@ -608,6 +609,7 @@ class ElectronicDocument(BaseModel):
         ('REJECTED', _('Rejected')),
         ('ERROR', _('Error')),
         ('VOIDED', _('Voided')),
+        ('INTERNAL', _('Internal (No SRI)')),
     ]
     
     company = models.ForeignKey(
@@ -633,6 +635,8 @@ class ElectronicDocument(BaseModel):
         _('access key'),
         max_length=49,
         unique=True,
+        null=True,
+        blank=True,
         help_text=_('49-digit access key')
     )
     
