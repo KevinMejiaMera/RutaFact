@@ -300,12 +300,6 @@ class StockMovement(BaseModel):
     )
     
     notes = models.TextField(blank=True)
-    
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True
-    )
 
     class Meta:
         verbose_name = _('Stock Movement')

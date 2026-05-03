@@ -89,6 +89,7 @@ urlpatterns = [
     path('inventory/', views.admin_inventory_view, name='admin_inventory'),
     path('inventory/product/<int:pk>/update/', views.admin_update_product, name='admin_update_product'),
     path('customers/', views.admin_customers_view, name='admin_customers'),
+    path('routes/', views.admin_routes_view, name='admin_routes'),
     path('config/sri/', views.admin_config_sri, name='admin_config_sri'),
 ]
 

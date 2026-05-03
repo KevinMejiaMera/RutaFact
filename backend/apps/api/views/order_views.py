@@ -31,7 +31,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         if user.is_superuser:
             return Order.objects.all()
         
-        if user.role == 'client':
+        if user.role.upper() in ['CLIENTE', 'CLIENT', 'CUSTOMER']:
             return Order.objects.filter(customer__user=user)
         
         companies = get_user_companies_exact(user)

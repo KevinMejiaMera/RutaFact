@@ -2,6 +2,7 @@
 from rest_framework import serializers
 from .models import Order, OrderItem
 from apps.invoicing.models import ProductTemplate, Customer
+from apps.companies.models import Company
 from decimal import Decimal, ROUND_HALF_UP
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -53,12 +54,28 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     print(f"DEBUG: Customer profile found: {customer.id} for company {company.id}")
                 except Exception as e:
                     print(f"DEBUG: Customer profile not found. Error: {str(e)}")
-                    # Fallback para admins/vendedores que crean pedidos para otros
-                    customer_id = self.context['request'].data.get('customer')
-                    if not customer_id:
-                        raise serializers.ValidationError("No se encontró perfil de cliente. Debes ser un Cliente registrado o proporcionar un customer_id.")
-                    customer = Customer.objects.get(id=customer_id)
-                    company = customer.company
+                    
+                    # SI EL USUARIO TIENE ROL DE CLIENTE, CREAR PERFIL AUTOMÁTICAMENTE
+                    if user.role == 'CLIENTE' or user.role == 'CUSTOMER':
+                        print(f"DEBUG: Auto-creating customer profile for user {user.id}")
+                        # Usar la empresa del usuario o la empresa 1 por defecto
+                        user_company = user.company or Company.objects.first()
+                        customer = Customer.objects.create(
+                            user=user,
+                            company=user_company,
+                            name=f"{user.first_name} {user.last_name}".strip() or user.email,
+                            email=user.email,
+                            identification='9999999999', # Consumidor final por defecto
+                            identification_type='07'
+                        )
+                        company = user_company
+                    else:
+                        # Fallback para admins/vendedores que crean pedidos para otros
+                        customer_id = self.context['request'].data.get('customer')
+                        if not customer_id:
+                            raise serializers.ValidationError("No se encontró perfil de cliente. Debes ser un Cliente registrado o proporcionar un customer_id.")
+                        customer = Customer.objects.get(id=customer_id)
+                        company = customer.company
                 
                 order = Order.objects.create(
                     company=company,

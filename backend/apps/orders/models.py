@@ -51,6 +51,15 @@ class Order(BaseModel):
         verbose_name=_('invoice')
     )
     
+    route = models.ForeignKey(
+        'logistics.Route',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders',
+        verbose_name=_('assigned route')
+    )
+    
     notes = models.TextField(_('notes'), blank=True)
 
     class Meta:

@@ -1,0 +1,282 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block page_title %}Gestión de Logística y Rutas{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom: 30px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+        <div>
+            <h2 class="gradient-text"><i class="fas fa-route"></i> Central de Logística</h2>
+            <p style="color: var(--text-dim); font-size: 14px; margin-top: 5px;">Planifique rutas, asigne destinos y gestione entregas en tiempo real.</p>
+        </div>
+        <button onclick="toggleRouteForm()" class="btn-primary" style="padding: 10px 20px;">
+            <i class="fas fa-plus"></i> Nueva Ruta
+        </button>
+    </div>
+
+    <!-- Formulario para Nueva Ruta (Oculto por defecto) -->
+    <div id="routeForm" class="card" style="display: none; background: rgba(255,255,255,0.02); border: 1px dashed var(--primary); margin-bottom: 25px;">
+        <h3 style="margin-bottom: 20px; font-size: 16px; color: var(--primary);">Crear Nueva Hoja de Ruta</h3>
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create_route">
+            <!-- Selector de Rutas Frecuentes -->
+            <div style="margin-bottom: 20px; padding: 15px; background: rgba(155, 176, 168, 0.05); border-radius: 10px; border: 1px solid rgba(155, 176, 168, 0.2);">
+                <label style="display: block; font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 8px;">Cargar desde Ruta Frecuente:</label>
+                <select id="templateSelector" onchange="loadTemplate(this)" style="width: 100%; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: 8px;">
+                    <option value="">-- Seleccionar una ruta guardada --</option>
+                    {% for template in route_templates %}
+                    <option value="{{ template.id }}" 
+                            data-name="{{ template.name }}" 
+                            data-dest="{{ template.destination_name }}" 
+                            data-url="{{ template.google_maps_url }}">
+                        {{ template.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <p style="font-size: 11px; color: var(--text-dim); margin-top: 5px;"><i class="fas fa-info-circle"></i> Al seleccionar una, los campos de abajo se llenarán automáticamente.</p>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div>
+                    <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px;">Nombre de la Ruta</label>
+                    <input type="text" name="name" placeholder="Ej: Ruta Norte - Bodega" required style="width: 100%; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: 8px;">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px;">Conductor</label>
+                    <select name="driver" required style="width: 100%; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: 8px;">
+                        {% for driver in drivers %}
+                        <option value="{{ driver.id }}">{{ driver.get_full_name|default:driver.email }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px;">Destino (Nombre)</label>
+                    <input type="text" name="destination_name" placeholder="Ej: Plaza Central" style="width: 100%; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: 8px;">
+                </div>
+                <div style="grid-column: span 2;">
+                    <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px;">URL de Google Maps (Destino)</label>
+                    <input type="url" name="google_maps_url" placeholder="https://www.google.com/maps/..." style="width: 100%; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: 8px;">
+                </div>
+            </div>
+
+            <!-- Inventario para la Ruta (Venta Directa) -->
+            <div style="margin-top: 25px;">
+                <label style="display: block; font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 10px;">
+                    <i class="fas fa-boxes"></i> Carga de Inventario (Stock para Venta):
+                </label>
+                <div id="productRows" style="background: rgba(0,0,0,0.1); border-radius: 10px; padding: 15px; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 40px; gap: 10px; margin-bottom: 10px; color: var(--text-dim); font-size: 11px; text-transform: uppercase;">
+                        <span>Producto</span>
+                        <span>Cantidad</span>
+                        <span></span>
+                    </div>
+                    <!-- Las filas de productos se añadirán aquí con JS -->
+                </div>
+                <button type="button" onclick="addProductRow()" class="btn-primary" style="margin-top: 10px; background: rgba(0, 255, 150, 0.1); color: #00ff96; padding: 8px 15px; font-size: 12px; border: 1px dashed #00ff96;">
+                    <i class="fas fa-plus-circle"></i> Añadir Item al Camión
+                </button>
+            </div>
+
+            <!-- Selección de Pedidos para la Ruta -->
+            <div style="margin-top: 25px;">
+                <label style="display: block; font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 10px;">
+                    <i class="fas fa-clipboard-list"></i> Asignar Pedidos Pendientes:
+                </label>
+                <div style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 10px; padding: 10px;">
+                    {% for order in pending_orders %}
+                    <div style="display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <input type="checkbox" name="orders" value="{{ order.id }}" style="cursor: pointer;">
+                        <span style="font-size: 13px; color: var(--text-main);">#{{ order.id }} - {{ order.customer.name }} ($ {{ order.total_amount }})</span>
+                        <span style="font-size: 11px; color: var(--text-dim); margin-left: auto;">{{ order.delivery_address|truncatechars:30 }}</span>
+                    </div>
+                    {% empty %}
+                    <p style="text-align: center; color: var(--text-dim); font-size: 12px;">No hay pedidos pendientes para asignar.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox" name="save_as_template" id="save_as_template" style="width: 18px; height: 18px; cursor: pointer;">
+                <label for="save_as_template" style="font-size: 13px; color: var(--text-main); cursor: pointer;">
+                    <i class="fas fa-save"></i> Guardar esta configuración como ruta frecuente
+                </label>
+            </div>
+
+            <div style="margin-top: 20px; text-align: right; display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="toggleRouteForm()" class="btn-primary" style="background: var(--border); color: var(--text-main);">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar y Asignar</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Listado de Rutas -->
+    <div class="table-responsive">
+        <table style="width: 100%; border-collapse: separate; border-spacing: 0 10px;">
+            <thead>
+                <tr style="color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">
+                    <th style="padding: 10px 20px; text-align: left;">Ruta / Fecha</th>
+                    <th style="padding: 10px 20px; text-align: left;">Destino / GPS</th>
+                    <th style="padding: 10px 20px; text-align: left;">Responsable</th>
+                    <th style="padding: 10px 20px; text-align: center;">Pedidos</th>
+                    <th style="padding: 10px 20px; text-align: center;">Estado</th>
+                    <th style="padding: 10px 20px; text-align: center;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for route in routes %}
+                <tr style="background: var(--border); opacity: 0.95; border-radius: 12px; transition: all 0.3s ease;">
+                    <td style="padding: 20px; border-radius: 12px 0 0 12px;">
+                        <span style="display: block; font-weight: 700; color: var(--primary);">{{ route.name }}</span>
+                        <span style="font-size: 12px; color: var(--text-dim);">{{ route.date|date:"d M, Y" }}</span>
+                    </td>
+                    <td style="padding: 20px;">
+                        {% if route.destination_name %}
+                        <span style="display: block; font-weight: 600;">{{ route.destination_name }}</span>
+                        {% endif %}
+                        {% if route.google_maps_url %}
+                        <a href="{{ route.google_maps_url }}" target="_blank" style="color: var(--accent); font-size: 11px; text-decoration: none;">
+                            <i class="fas fa-map-marker-alt"></i> Ver en Google Maps
+                        </a>
+                        {% else %}
+                        <span style="color: var(--text-dim); font-size: 11px;">Sin ubicación GPS</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 20px;">
+                        <span style="display: block; font-weight: 600;">{{ route.driver.get_full_name|default:route.driver.email }}</span>
+                    </td>
+                    <td style="padding: 20px; text-align: center;">
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                            <span style="background: rgba(155, 176, 168, 0.2); color: var(--accent); padding: 4px 10px; border-radius: 15px; font-weight: 700; font-size: 12px;" title="Pedidos Directos">
+                                <i class="fas fa-shopping-cart"></i> {{ route.orders.count }} Pedidos
+                            </span>
+                            {% if route.products.all %}
+                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                {% for rp in route.products.all %}
+                                <span style="background: rgba(0, 255, 150, 0.1); color: #00ff96; padding: 2px 8px; border-radius: 10px; font-weight: 600; font-size: 9px; white-space: nowrap;">
+                                    {{ rp.product.name }}: {{ rp.quantity_loaded|floatformat:0 }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td style="padding: 20px; text-align: center;">
+                        {% if route.status == 'PENDING' %}
+                            <span style="padding: 5px 12px; border-radius: 20px; font-size: 10px; font-weight: 700; background: rgba(155, 176, 168, 0.1); color: var(--accent);">PENDIENTE</span>
+                        {% elif route.status == 'ACTIVE' %}
+                            <span style="padding: 5px 12px; border-radius: 20px; font-size: 10px; font-weight: 700; background: rgba(0, 255, 150, 0.1); color: #00ff96;">EN RUTA</span>
+                        {% elif route.status == 'COMPLETED' %}
+                            <span style="padding: 5px 12px; border-radius: 20px; font-size: 10px; font-weight: 700; background: rgba(0, 150, 255, 0.1); color: #0096ff;">FINALIZADA</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 20px; text-align: center; border-radius: 0 12px 12px 0;">
+                        <div style="display: flex; gap: 8px; justify-content: center;">
+                            <a href="{% url 'tracking_map_detail' route.id %}" class="action-btn" title="Rastreo en Vivo" style="background: rgba(155, 176, 168, 0.1); color: var(--accent);">
+                                <i class="fas fa-satellite"></i>
+                            </a>
+                            {% if route.status != 'COMPLETED' %}
+                            <form method="POST" style="margin: 0;">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="complete_route">
+                                <input type="hidden" name="route_id" value="{{ route.id }}">
+                                <button type="submit" class="action-btn" title="Marcar como Completada" style="background: rgba(0, 255, 150, 0.05); color: #00ff96; border: none; cursor: pointer;">
+                                    <i class="fas fa-check-circle"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-dim);">No hay rutas registradas</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    function toggleRouteForm() {
+        const form = document.getElementById('routeForm');
+        form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        if (form.style.display === 'block') {
+            form.scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+
+    function loadTemplate(select) {
+        const option = select.options[select.selectedIndex];
+        if (!option.value) return;
+
+        // Llenar los campos
+        document.querySelector('input[name="name"]').value = option.getAttribute('data-name');
+        document.querySelector('input[name="destination_name"]').value = option.getAttribute('data-dest');
+        document.querySelector('input[name="google_maps_url"]').value = option.getAttribute('data-url');
+        
+        // Efecto visual de resaltado temporal
+        const fields = ['name', 'destination_name', 'google_maps_url'];
+        fields.forEach(f => {
+            const el = document.querySelector(`input[name="${f}"]`);
+            if (el) {
+                el.style.borderColor = 'var(--accent)';
+                setTimeout(() => { el.style.borderColor = 'var(--border)'; }, 1000);
+            }
+        });
+    }
+
+    function addProductRow() {
+        const container = document.getElementById('productRows');
+        const row = document.createElement('div');
+        row.style.display = 'grid';
+        row.style.gridTemplateColumns = '2fr 1fr 40px';
+        row.style.gap = '10px';
+        row.style.marginBottom = '10px';
+        row.className = 'product-row-item';
+
+        let options = '<option value="">-- Seleccionar Producto --</option>';
+        {% for p in available_products %}
+        options += `<option value="{{ p.id }}">{{ p.name }} (Stock: {{ p.current_stock|floatformat:0 }})</option>`;
+        {% endfor %}
+
+        row.innerHTML = `
+            <select name="product_id[]" required style="width: 100%; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); padding: 8px; border-radius: 8px; font-size: 13px;">
+                ${options}
+            </select>
+            <input type="number" name="product_quantity[]" value="1" min="1" step="0.01" required style="width: 100%; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); padding: 8px; border-radius: 8px; font-size: 13px;">
+            <button type="button" onclick="this.parentElement.remove()" style="background: rgba(255, 80, 80, 0.1); color: #ff5050; border: 1px solid rgba(255, 80, 80, 0.2); border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        container.appendChild(row);
+    }
+</script>
+
+<style>
+    .action-btn {
+        width: 35px;
+        height: 35px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.05);
+        color: var(--text-main);
+        text-decoration: none;
+        transition: all 0.3s ease;
+    }
+    .action-btn:hover {
+        transform: translateY(-2px);
+        background: var(--primary);
+        color: var(--bg-card);
+    }
+    tr:hover {
+        background: rgba(255,255,255,0.03) !important;
+        transform: scale(1.005);
+    }
+</style>
+{% endblock %}

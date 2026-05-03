@@ -145,7 +145,7 @@ services:
     command:
       - "http"
       - "backend:8000"
-      - "--domain=jolly-disprove-swear.ngrok-free.dev"
+      - "--url=jolly-disprove-swear.ngrok-free.dev"
     depends_on:
       - backend
     restart: unless-stopped

@@ -132,3 +132,46 @@ class InventoryService:
         print(f"🏁 [InventoryService] Purchase processing complete. Total: {purchase.total_amount}")
         
         return purchase
+
+    @staticmethod
+    @transaction.atomic
+    def register_movement(company, product, movement_type, quantity, reference='', notes='', user=None):
+        """
+        Registra un movimiento de stock manual o automático.
+        movement_type: 'IN' o 'OUT'
+        """
+        from apps.inventory.models import ProductStock, StockMovement
+        from decimal import Decimal
+        
+        quantity = Decimal(str(quantity))
+        
+        stock, created = ProductStock.objects.get_or_create(
+            company=company,
+            product=product,
+            defaults={'quantity': Decimal('0')}
+        )
+        
+        prev_stock = stock.quantity
+        if movement_type == 'IN':
+            stock.quantity += quantity
+        else:
+            stock.quantity -= quantity
+            
+        stock.save()
+        
+        # También actualizar el current_stock en el template (redundancia para búsqueda rápida)
+        product.current_stock = stock.quantity
+        product.save()
+
+        StockMovement.objects.create(
+            company=company,
+            product=product,
+            movement_type=movement_type,
+            quantity=quantity,
+            previous_stock=prev_stock,
+            new_stock=stock.quantity,
+            reference=reference,
+            notes=notes,
+            created_by=user
+        )
+        return stock

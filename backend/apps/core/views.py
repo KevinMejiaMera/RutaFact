@@ -16,6 +16,9 @@ from decimal import Decimal, ROUND_HALF_UP
 from apps.companies.models import Company
 from apps.sri_integration.models import SRIConfiguration, ElectronicDocument, CreditNote
 from apps.certificates.models import DigitalCertificate
+from apps.logistics.models import Route, Vehicle, RouteStop, RouteTemplate, RouteProduct
+from apps.invoicing.models import ProductTemplate
+from apps.orders.models import Order
 from django.contrib.auth import get_user_model
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -161,6 +164,129 @@ def admin_config_sri(request):
 
 @login_required
 @user_passes_test(is_admin)
+def admin_routes_view(request):
+    """
+    Vista de gestión de rutas, destinos y asignación de pedidos
+    """
+    companies = get_user_companies_secure(request.user)
+    company = companies.first()
+    
+    if not company:
+        messages.error(request, "No tienes una empresa asignada.")
+        return redirect('admin_dashboard')
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        
+        if action == 'create_route':
+            name = request.POST.get('name', '').strip()
+            driver_id = request.POST.get('driver')
+            destination_name = request.POST.get('destination_name', '').strip()
+            google_maps_url = request.POST.get('google_maps_url', '').strip()
+            date_str = request.POST.get('date', timezone.now().date().isoformat())
+            
+            driver = User.objects.filter(id=driver_id).first()
+            
+            route = Route.objects.create(
+                company=company,
+                name=name,
+                driver=driver,
+                destination_name=destination_name,
+                google_maps_url=google_maps_url,
+                date=date_str,
+                status='PENDING'
+            )
+            
+            # Asignar pedidos seleccionados y crear paradas (nodos) automáticamente
+            order_ids = request.POST.getlist('orders')
+            if order_ids:
+                orders = Order.objects.filter(id__in=order_ids, company=company)
+                orders.update(route=route)
+                
+                # Crear paradas para cada pedido
+                for i, order in enumerate(orders):
+                    RouteStop.objects.get_or_create(
+                        route=route,
+                        customer=order.customer,
+                        defaults={'order': i, 'status': 'PENDING'}
+                    )
+            
+            # Procesar Productos de Consignación (Carga de Inventario)
+            product_ids = request.POST.getlist('product_id[]')
+            product_quantities = request.POST.getlist('product_quantity[]')
+            
+            for p_id, p_qty in zip(product_ids, product_quantities):
+                if p_id and p_qty:
+                    product = ProductTemplate.objects.filter(id=p_id).first()
+                    if product:
+                        RouteProduct.objects.create(
+                            route=route,
+                            product=product,
+                            quantity_loaded=Decimal(p_qty)
+                        )
+            
+            messages.success(request, f"Ruta '{name}' creada y asignada correctamente.")
+            
+            # Opción: Guardar como plantilla si el usuario lo marcó
+            if request.POST.get('save_as_template') == 'on':
+                RouteTemplate.objects.get_or_create(
+                    company=company,
+                    name=name,
+                    defaults={
+                        'destination_name': destination_name,
+                        'google_maps_url': google_maps_url
+                    }
+                )
+                messages.info(request, f"Ruta '{name}' guardada en tu catálogo de rutas frecuentes.")
+            
+            return redirect('admin_routes')
+            
+        elif action == 'assign_orders':
+            route_id = request.POST.get('route_id')
+            order_ids = request.POST.getlist('orders')
+            route = get_object_or_404(Route, id=route_id, company=company)
+            
+            if order_ids:
+                orders = Order.objects.filter(id__in=order_ids, company=company)
+                orders.update(route=route)
+                
+                # Crear paradas para cada pedido nuevo
+                for i, order in enumerate(orders):
+                    RouteStop.objects.get_or_create(
+                        route=route,
+                        customer=order.customer,
+                        defaults={'order': i, 'status': 'PENDING'}
+                    )
+                messages.success(request, f"Pedidos asignados a la ruta {route.name}.")
+            return redirect('admin_routes')
+
+        elif action == 'complete_route':
+            route_id = request.POST.get('route_id')
+            route = get_object_or_404(Route, id=route_id, company=company)
+            route.status = 'COMPLETED'
+            route.save()
+            messages.success(request, f"Ruta {route.name} marcada como completada.")
+            return redirect('admin_routes')
+
+    # GET: Listar datos
+    routes = Route.objects.filter(company=company).order_by('-date', '-created_at')
+    route_templates = RouteTemplate.objects.filter(company=company)
+    drivers = User.objects.filter(is_active=True)
+    pending_orders = Order.objects.filter(company=company, route__isnull=True).exclude(status='COMPLETED')
+    available_products = ProductTemplate.objects.filter(company=company, product_type='PRODUCT')
+    
+    context = {
+        'routes': routes,
+        'route_templates': route_templates,
+        'drivers': drivers,
+        'pending_orders': pending_orders,
+        'available_products': available_products,
+        'company': company,
+    }
+    return render(request, 'admin/routes.html', context)
+
+@login_required
+@user_passes_test(is_admin)
 def admin_users_view(request):
     """Vista dedicada para la gestión de Usuarios y Roles"""
     companies = get_user_companies_secure(request.user)
@@ -175,6 +301,25 @@ def admin_users_view(request):
         'user': request.user,
     }
     return render(request, 'admin/users.html', context)
+
+@login_required
+@user_passes_test(is_admin)
+def admin_customers_view(request):
+    """Vista dedicada para la gestión de Clientes"""
+    from apps.invoicing.models import Customer
+    companies = get_user_companies_secure(request.user)
+    company = companies.first()
+    
+    customers = []
+    if company:
+        customers = Customer.objects.filter(company=company).order_by('name')
+
+    context = {
+        'company': company,
+        'customers': customers,
+        'user': request.user,
+    }
+    return render(request, 'admin/customers.html', context)
 
 @login_required
 @user_passes_test(is_admin)
