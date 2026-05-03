@@ -432,7 +432,10 @@
                 <a href="/dashboard/purchases/" class="nav-link {% if '/purchases/' in request.path %}active{% endif %}"><i class="fas fa-shopping-cart"></i> Compras (Inventario)</a>
             </li>
             <li class="nav-item">
-                <a href="/dashboard/inventory/" class="nav-link {% if '/inventory/' in request.path %}active{% endif %}"><i class="fas fa-boxes"></i> Stock / Inventario</a>
+                <a href="/dashboard/inventory/" class="nav-link {% if request.path == '/dashboard/inventory/' %}active{% endif %}"><i class="fas fa-boxes"></i> Stock / Inventario</a>
+            </li>
+            <li class="nav-item">
+                <a href="/dashboard/inventory/movements/" class="nav-link {% if '/inventory/movements/' in request.path %}active{% endif %}"><i class="fas fa-history"></i> Movimientos Bodega</a>
             </li>
             <li class="nav-item">
                 <a href="{% url 'admin_routes' %}" class="nav-link {% if '/routes/' in request.path %}active{% endif %}">

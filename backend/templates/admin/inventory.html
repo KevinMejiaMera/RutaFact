@@ -104,10 +104,13 @@
                 <p style="color: var(--text-dim); font-size: 14px; margin-top: 5px;">Existencias actuales disponibles para la venta</p>
             </div>
             <div style="display: flex; gap: 10px;">
-                <a href="{% url 'admin_sync_all_data' %}" class="btn-primary" style="background: rgba(76, 175, 80, 0.1); color: #4CAF50; border: 1px solid #4CAF50;">
-                    <i class="fas fa-sync"></i> Sincronizar IVA 15% y Stock
+                <a href="{% url 'admin_stock_movements' %}" class="btn-primary" style="background: rgba(0, 188, 212, 0.1); color: #00BCD4; border: 1px solid #00BCD4; text-decoration: none; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-history"></i> Ver Movimientos (Kardex)
                 </a>
-                <a href="{% url 'admin_purchases' %}" class="btn-primary" style="background: rgba(108, 99, 255, 0.1); color: var(--primary); border: 1px solid var(--primary);">
+                <a href="{% url 'admin_sync_all_data' %}" class="btn-primary" style="background: rgba(76, 175, 80, 0.1); color: #4CAF50; border: 1px solid #4CAF50; text-decoration: none; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-sync"></i> Sincronizar
+                </a>
+                <a href="{% url 'admin_purchases' %}" class="btn-primary" style="background: rgba(108, 99, 255, 0.1); color: var(--primary); border: 1px solid var(--primary); text-decoration: none; display: flex; align-items: center; gap: 8px;">
                     <i class="fas fa-plus"></i> Ingresar Mercadería
                 </a>
             </div>

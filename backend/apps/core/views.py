@@ -1056,6 +1056,25 @@ def admin_inventory_view(request):
 
 @login_required
 @user_passes_test(is_admin)
+def admin_stock_movements_view(request):
+    """Vista para consultar el historial de movimientos de bodega"""
+    from apps.inventory.models import StockMovement
+    companies = get_user_companies_secure(request.user)
+    company = companies.first()
+    
+    movements = []
+    if company:
+        movements = StockMovement.objects.filter(company=company).select_related('product').order_by('-created_at')[:500]
+
+    context = {
+        'company': company,
+        'movements': movements,
+        'user': request.user,
+    }
+    return render(request, 'admin/inventory_movements.html', context)
+
+@login_required
+@user_passes_test(is_admin)
 def admin_pos_view(request):
     """Vista del Punto de Venta (POS)"""
     from apps.invoicing.models import ProductTemplate, Customer, PaymentMethod

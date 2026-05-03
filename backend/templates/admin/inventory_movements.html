@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block page_title %}Movimientos de Bodega{% endblock %}
+
+{% block extra_css %}
+<style>
+    .inventory-container {
+        animation: fadeIn 0.6s cubic-bezier(0.165, 0.84, 0.44, 1);
+    }
+    
+    .table-card {
+        background: var(--bg-card);
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        overflow: hidden;
+    }
+
+    .table-header {
+        padding: 30px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 20px;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 900px;
+    }
+
+    th {
+        text-align: left;
+        padding: 18px 30px;
+        color: var(--text-dim);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        font-weight: 700;
+        background: rgba(255,255,255,0.01);
+        border-bottom: 1px solid var(--border);
+    }
+
+    td {
+        padding: 15px 30px;
+        border-bottom: 1px solid var(--border);
+        color: var(--text-main);
+        font-size: 14px;
+    }
+
+    .movement-badge {
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 10px;
+        text-transform: uppercase;
+    }
+
+    .type-in { background: rgba(76, 175, 80, 0.1); color: #4CAF50; }
+    .type-out { background: rgba(244, 67, 54, 0.1); color: #f44336; }
+    .type-adj { background: rgba(108, 99, 255, 0.1); color: var(--primary); }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="inventory-container">
+    <div class="table-card">
+        <div class="table-header">
+            <div>
+                <h3 style="font-size: 18px; color: white;">Historial de Movimientos</h3>
+                <p style="color: var(--text-dim); font-size: 14px; margin-top: 5px;">Registro cronológico de entradas, salidas y ajustes de inventario</p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <a href="{% url 'admin_inventory' %}" class="btn-primary" style="background: transparent; border: 1px solid var(--border); color: white; text-decoration: none; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-arrow-left"></i> Volver a Stock
+                </a>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha y Hora</th>
+                    <th>Producto</th>
+                    <th>Tipo</th>
+                    <th>Stock Anterior</th>
+                    <th>Movimiento</th>
+                    <th>Stock Resultante</th>
+                    <th>Referencia</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in movements %}
+                <tr>
+                    <td style="font-size: 13px;">
+                        <div style="color: white; font-weight: 600;">{{ m.created_at|date:"d/m/Y" }}</div>
+                        <div style="color: var(--text-dim); font-size: 11px;">{{ m.created_at|date:"H:i" }}</div>
+                    </td>
+                    <td>
+                        <div style="font-weight: 600; color: white;">{{ m.product.name }}</div>
+                        <div style="font-size: 11px; color: var(--text-dim);">{{ m.product.main_code }}</div>
+                    </td>
+                    <td>
+                        <span class="movement-badge type-{{ m.movement_type|lower }}">
+                            {{ m.get_movement_type_display }}
+                        </span>
+                    </td>
+                    <td style="color: var(--text-dim);">{{ m.previous_stock }}</td>
+                    <td style="font-weight: 700; color: {% if m.movement_type == 'IN' %}#4CAF50{% elif m.movement_type == 'OUT' %}#f44336{% else %}white{% endif %};">
+                        {% if m.movement_type == 'IN' %}+{% elif m.movement_type == 'OUT' %}-{% endif %}{{ m.quantity }}
+                    </td>
+                    <td style="font-weight: 700; color: white;">{{ m.new_stock }}</td>
+                    <td>
+                        <div style="font-size: 13px; color: white;">{{ m.reference }}</div>
+                        <div style="font-size: 11px; color: var(--text-dim);">{{ m.notes|truncatechars:30 }}</div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" style="text-align: center; padding: 80px;">
+                        <i class="fas fa-history fa-4x" style="margin-bottom: 20px; opacity: 0.1;"></i>
+                        <h4 style="color: var(--text-dim);">No hay movimientos registrados</h4>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

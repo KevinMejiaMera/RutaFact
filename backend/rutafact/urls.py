@@ -56,6 +56,7 @@ urlpatterns = [
     path('dashboard/purchases/', core_views.admin_purchases_view, name='admin_purchases'),
     path('dashboard/purchases/<int:purchase_id>/delete/', core_views.admin_delete_purchase, name='admin_delete_purchase'),
     path('dashboard/inventory/', core_views.admin_inventory_view, name='admin_inventory'),
+    path('dashboard/inventory/movements/', core_views.admin_stock_movements_view, name='admin_stock_movements'),
     path('dashboard/inventory/<int:stock_id>/adjust/', core_views.admin_adjust_stock, name='admin_adjust_stock'),
     path('dashboard/inventory/product/<int:product_id>/edit/', core_views.admin_edit_product, name='admin_edit_product'),
     path('dashboard/inventory/product/<int:product_id>/delete/', core_views.admin_delete_product, name='admin_delete_product'),
