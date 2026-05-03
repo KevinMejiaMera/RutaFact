@@ -110,8 +110,11 @@
                 <a href="{% url 'admin_sync_all_data' %}" class="btn-primary" style="background: rgba(76, 175, 80, 0.1); color: #4CAF50; border: 1px solid #4CAF50; text-decoration: none; display: flex; align-items: center; gap: 8px;">
                     <i class="fas fa-sync"></i> Sincronizar
                 </a>
-                <a href="{% url 'admin_purchases' %}" class="btn-primary" style="background: rgba(108, 99, 255, 0.1); color: var(--primary); border: 1px solid var(--primary); text-decoration: none; display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-plus"></i> Ingresar Mercadería
+                <button class="btn-primary" style="background: rgba(108, 99, 255, 0.1); color: var(--primary); border: 1px solid var(--primary); display: flex; align-items: center; gap: 8px;" onclick="openDirectEntryModal()">
+                    <i class="fas fa-plus"></i> Ingresar Mercadería (Directo)
+                </button>
+                <a href="{% url 'admin_purchases' %}" class="btn-primary" style="background: rgba(255, 152, 0, 0.1); color: #FF9800; border: 1px solid #FF9800; text-decoration: none; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-shopping-cart"></i> Compras
                 </a>
             </div>
         </div>
@@ -255,7 +258,54 @@
     </div>
 </div>
 
+<!-- Modal Ingreso Directo de Mercadería -->
+<div id="directEntryModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+            <h3 style="font-size: 22px; color: white;">Ingreso Directo de Mercadería</h3>
+            <i class="fas fa-times" style="cursor: pointer; color: var(--text-dim);" onclick="closeDirectEntryModal()"></i>
+        </div>
+        
+        <form action="{% url 'admin_direct_stock_entry' %}" method="POST">
+            {% csrf_token %}
+            <datalist id="products-list">
+                {% for prod in products %}
+                    <option value="{{ prod.name }}">
+                {% endfor %}
+            </datalist>
+            <div class="form-group">
+                <label>Nombre del Producto</label>
+                <input type="text" name="product_name" class="form-control" list="products-list" placeholder="Escriba el nombre o seleccione..." required autocomplete="off">
+                <p style="font-size: 11px; color: var(--text-dim); margin-top: 5px;">Si el producto no existe, se creará automáticamente.</p>
+            </div>
+            
+            <div class="form-group">
+                <label>Cantidad a Ingresar</label>
+                <input type="number" step="0.01" name="quantity" class="form-control" placeholder="0.00" required>
+            </div>
+
+            <div class="form-group">
+                <label>Notas / Motivo</label>
+                <textarea name="notes" class="form-control" rows="3" placeholder="Ej: Producción propia, reposición, etc."></textarea>
+            </div>
+
+            <div style="margin-top: 30px; display: flex; justify-content: flex-end; gap: 15px;">
+                <button type="button" class="btn-primary" style="background: transparent; border: 1px solid var(--border); color: white;" onclick="closeDirectEntryModal()">Cancelar</button>
+                <button type="submit" class="btn-primary">Confirmar Ingreso</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
+    function openDirectEntryModal() {
+        document.getElementById('directEntryModal').style.display = 'flex';
+    }
+
+    function closeDirectEntryModal() {
+        document.getElementById('directEntryModal').style.display = 'none';
+    }
+
     function openEditProductModal(productId) {
         const modal = document.getElementById('editProductModal');
         const form = document.getElementById('editProductForm');

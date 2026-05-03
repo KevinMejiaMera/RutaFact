@@ -226,7 +226,13 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                 <div class="form-group">
                     <label>Número de Factura</label>
-                    <input type="text" name="invoice_number" class="form-control" placeholder="001-001-000000001" required>
+                    <div style="display: flex; gap: 5px; align-items: center;">
+                        <input type="text" name="invoice_est" id="invoice_est" class="form-control" placeholder="001" maxlength="3" style="text-align: center; width: 70px;" required onkeyup="moveFocus(this, 'invoice_pto')">
+                        <span style="color: var(--text-dim); font-weight: bold;">-</span>
+                        <input type="text" name="invoice_pto" id="invoice_pto" class="form-control" placeholder="001" maxlength="3" style="text-align: center; width: 70px;" required onkeyup="moveFocus(this, 'invoice_seq')">
+                        <span style="color: var(--text-dim); font-weight: bold;">-</span>
+                        <input type="text" name="invoice_seq" id="invoice_seq" class="form-control" placeholder="000000001" maxlength="9" style="text-align: center; flex: 1;" required onblur="padSequence(this)">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Notas / Observaciones</label>
@@ -257,7 +263,8 @@
                     <tbody id="items-body">
                         <tr class="item-row">
                             <td>
-                                <input type="text" name="product_name[]" class="form-control" list="products-list" placeholder="Nombre del producto..." required style="padding: 8px;" onchange="autoFillProduct(this)">
+                                <input type="text" name="product_name[]" class="form-control" list="products-list" placeholder="Nombre del producto..." required style="padding: 8px;" onchange="autoFillProduct(this)" autocomplete="off">
+                                <p style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Escriba para crear uno nuevo o seleccione de la lista.</p>
                                 <div style="margin-top: 8px;">
                                     <label style="font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 5px; cursor: pointer; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 5px; width: fit-content;">
                                         <i class="fas fa-camera"></i> Foto
@@ -297,6 +304,18 @@
 </div>
 
 <script>
+    function moveFocus(current, nextId) {
+        if (current.value.length === current.maxLength) {
+            document.getElementById(nextId).focus();
+        }
+    }
+
+    function padSequence(input) {
+        if (input.value && !isNaN(input.value)) {
+            input.value = input.value.padStart(9, '0');
+        }
+    }
+
     function openModal() {
         document.getElementById('purchaseModal').style.display = 'block';
     }

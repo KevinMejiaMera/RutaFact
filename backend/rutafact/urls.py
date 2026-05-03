@@ -61,6 +61,7 @@ urlpatterns = [
     path('dashboard/inventory/product/<int:product_id>/edit/', core_views.admin_edit_product, name='admin_edit_product'),
     path('dashboard/inventory/product/<int:product_id>/delete/', core_views.admin_delete_product, name='admin_delete_product'),
     path('dashboard/inventory/sync-all/', core_views.admin_sync_all_data, name='admin_sync_all_data'),
+    path('dashboard/inventory/direct-entry/', core_views.admin_direct_stock_entry, name='admin_direct_stock_entry'),
     path('dashboard/orders/', core_views.admin_orders_view, name='admin_orders'),
     path('dashboard/orders/<int:pk>/complete/', core_views.admin_complete_order, name='admin_complete_order'),
     path('dashboard/orders/<int:pk>/cancel/', core_views.admin_cancel_order, name='admin_cancel_order'),

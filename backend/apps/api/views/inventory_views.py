@@ -206,6 +206,62 @@ class MovementViewSet(viewsets.ViewSet):
             })
         return Response(data)
 
+    def create(self, request):
+        """Crear un movimiento manual (Ingreso Directo)"""
+        data = request.data
+        company_id = data.get('company_id')
+        product_id = data.get('product_id')
+        product_name = data.get('product_name', '').strip()
+        quantity_str = data.get('quantity', '0')
+        notes = data.get('notes', 'Ingreso Directo (Móvil)')
+        
+        if not company_id:
+            return Response({'error': 'company_id es requerido'}, status=400)
+            
+        try:
+            quantity = Decimal(str(quantity_str))
+            if quantity <= 0:
+                return Response({'error': 'La cantidad debe ser mayor a cero'}, status=400)
+                
+            company = get_object_or_404(Company, id=company_id)
+            
+            if product_id:
+                product = get_object_or_404(ProductTemplate, id=product_id, company=company)
+            elif product_name:
+                # Buscar por nombre exacto (case insensitive)
+                product = ProductTemplate.objects.filter(company=company, name__iexact=product_name).first()
+                if not product:
+                    import time
+                    main_code = f"P-{int(time.time())}"
+                    product = ProductTemplate.objects.create(
+                        company=company,
+                        name=product_name.upper(),
+                        main_code=main_code,
+                        description=product_name,
+                        unit_price=Decimal('0'),
+                        tax_rate=Decimal('15.00'),
+                        tax_code='2',
+                        track_inventory=True,
+                        created_by=request.user
+                    )
+            else:
+                return Response({'error': 'Debe proporcionar product_id o product_name'}, status=400)
+                
+            with transaction.atomic():
+                InventoryService.register_movement(
+                    company=company,
+                    product=product,
+                    movement_type='IN',
+                    quantity=quantity,
+                    reference='INGRESO DIRECTO',
+                    notes=notes,
+                    user=request.user
+                )
+                
+            return Response({'status': 'success', 'message': 'Stock actualizado correctamente'}, status=201)
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+
 class StockViewSet(viewsets.ViewSet):
     """API para consultar stock actual"""
     permission_classes = [IsAuthenticated]

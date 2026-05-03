@@ -941,8 +941,13 @@ def admin_purchases_view(request):
                 print(f"🔹 Prepared items_data: {len(items_data)} items")
 
                 # Llamar al servicio centralizado
+                est = request.POST.get('invoice_est', '001').zfill(3)
+                pto = request.POST.get('invoice_pto', '001').zfill(3)
+                seq = request.POST.get('invoice_seq', '0').zfill(9)
+                invoice_number = f"{est}-{pto}-{seq}"
+                
                 invoice_data = {
-                    'invoice_number': request.POST.get('invoice_number'),
+                    'invoice_number': invoice_number,
                     'issue_date': request.POST.get('issue_date'),
                     'notes': request.POST.get('notes', '')
                 }
@@ -1044,12 +1049,16 @@ def admin_inventory_view(request):
     company = companies.first()
     
     stocks = []
+    products = []
     if company:
         stocks = ProductStock.objects.filter(company=company).select_related('product').order_by('product__name')
+        from apps.invoicing.models import ProductTemplate
+        products = ProductTemplate.objects.filter(company=company, is_active=True).order_by('name')
 
     context = {
         'company': company,
         'stocks': stocks,
+        'products': products,
         'user': request.user,
     }
     return render(request, 'admin/inventory.html', context)
@@ -1072,6 +1081,66 @@ def admin_stock_movements_view(request):
         'user': request.user,
     }
     return render(request, 'admin/inventory_movements.html', context)
+
+@login_required
+@user_passes_test(is_admin)
+def admin_direct_stock_entry(request):
+    """Ingreso directo de mercadería sin factura de compra (Fabricación propia, etc)"""
+    from apps.inventory.services import InventoryService
+    from apps.inventory.models import ProductStock
+    from apps.invoicing.models import ProductTemplate
+    
+    companies = get_user_companies_secure(request.user)
+    company = companies.first()
+    
+    if request.method == 'POST':
+        product_name = request.POST.get('product_name', '').strip()
+        quantity_str = request.POST.get('quantity', '0')
+        notes = request.POST.get('notes', 'Ingreso Directo de Mercadería (Sin compra)')
+        
+        try:
+            quantity = Decimal(quantity_str.replace(',', '.'))
+            if not company:
+                messages.error(request, "No se encontró empresa asociada.")
+                return redirect('admin_inventory')
+                
+            if not product_name or quantity <= 0:
+                messages.warning(request, "Debe ingresar un nombre de producto y una cantidad válida.")
+                return redirect('admin_inventory')
+
+            with transaction.atomic():
+                # Buscar por nombre exacto (case insensitive)
+                product = ProductTemplate.objects.filter(company=company, name__iexact=product_name).first()
+                if not product:
+                    import time
+                    main_code = f"P-{int(time.time())}"
+                    product = ProductTemplate.objects.create(
+                        company=company,
+                        name=product_name.upper(),
+                        main_code=main_code,
+                        description=product_name,
+                        unit_price=Decimal('0'),
+                        tax_rate=Decimal('15.00'),
+                        tax_code='2',
+                        track_inventory=True,
+                        created_by=request.user
+                    )
+
+                InventoryService.register_movement(
+                    company=company,
+                    product=product,
+                    movement_type='IN',
+                    quantity=quantity,
+                    reference='INGRESO DIRECTO',
+                    notes=notes,
+                    user=request.user
+                )
+            
+            messages.success(request, f"✅ Ingreso exitoso: {quantity} {product.unit_of_measure} de {product.name}.")
+        except Exception as e:
+            messages.error(request, f"Error al procesar el ingreso: {str(e)}")
+            
+    return redirect('admin_inventory')
 
 @login_required
 @user_passes_test(is_admin)
