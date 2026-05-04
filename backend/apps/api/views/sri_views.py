@@ -300,6 +300,7 @@ def require_user_company_access(get_company_id_func=None):
                         request.data.get('company') or 
                         request.data.get('company_id') or
                         request.query_params.get('company_id') or
+                        request.query_params.get('company') or   # ← compatibilidad móvil
                         kwargs.get('company_id')
                     )
                 
@@ -988,16 +989,24 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
     def reports(self, request):
         """
         Endpoint de reportes filtrados por fechas y vendedores para la app móvil.
+        Devuelve: total_sales, total_revenue, total_profit, user_performance, results, sellers
         """
+        from django.db.models import Sum, Count
+        from decimal import Decimal
+        from apps.sri_integration.models import DocumentItem
+        from apps.invoicing.models import ProductTemplate
+        from apps.users.models import User as UserModel
+
         company = request.validated_company
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         seller_id = request.query_params.get('seller_id')
         
-        # Base query: Solo facturas autorizadas o generadas del vendedor/empresa
+        # Base query: Facturas + Notas Internas
         invoices = ElectronicDocument.objects.filter(
             company=company,
-            document_type='INVOICE'
+            document_type__in=['INVOICE', 'INTERNAL_NOTE'],
+            status__in=['AUTHORIZED', 'DRAFT', 'PENDING', 'INTERNAL']
         ).select_related('created_by')
         
         # Filtros
@@ -1007,32 +1016,77 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             invoices = invoices.filter(issue_date__lte=end_date)
         if seller_id:
             invoices = invoices.filter(created_by_id=seller_id)
-            
-        from django.db.models import Sum, Count
-        stats = invoices.aggregate(
-            total_count=Count('id'),
-            total_revenue=Sum('total_amount')
-        )
         
-        # Lista de documentos (limitada a los últimos 100 por rendimiento)
-        invoices_list = invoices.order_by('-issue_date', '-created_at')[:100]
+        invoices = invoices.order_by('-issue_date', '-created_at')
         
+        # --- Totales globales ---
+        stats = invoices.aggregate(total_count=Count('id'), total_revenue=Sum('total_amount'))
+        total_profit = Decimal('0')
+        for inv in invoices:
+            for item in DocumentItem.objects.filter(document=inv):
+                prod = ProductTemplate.objects.filter(company=company, main_code=item.main_code).first()
+                if prod:
+                    cost = prod.purchase_price or Decimal('0')
+                    total_profit += (item.unit_price - cost) * item.quantity
+        
+        # --- Rendimiento por usuario (solo roles activos de venta) ---
+        relevant_roles = ['admin', 'seller', 'dispatcher']
+        potential_sellers = UserModel.objects.filter(
+            company=company, role__in=relevant_roles, is_active=True
+        ).order_by('first_name')
+        
+        user_performance = []
+        for seller in potential_sellers:
+            s_invoices = invoices.filter(created_by=seller)
+            s_count = s_invoices.count()
+            if s_count > 0:
+                s_revenue = s_invoices.aggregate(Sum('total_amount'))['total_amount__sum'] or Decimal('0')
+                s_profit = Decimal('0')
+                for s_inv in s_invoices:
+                    for item in DocumentItem.objects.filter(document=s_inv):
+                        prod = ProductTemplate.objects.filter(company=company, main_code=item.main_code).first()
+                        if prod:
+                            cost = prod.purchase_price or Decimal('0')
+                            s_profit += (item.unit_price - cost) * item.quantity
+                user_performance.append({
+                    'user_id': seller.id,
+                    'full_name': seller.get_full_name() or seller.email,
+                    'email': seller.email,
+                    'role': seller.role,
+                    'role_display': seller.get_role_display(),
+                    'initials': (seller.first_name[:1] + seller.last_name[:1]).upper(),
+                    'count': s_count,
+                    'revenue': str(round(s_revenue, 2)),
+                    'profit': str(round(s_profit, 2)),
+                })
+        
+        # --- Lista de sellers para filtro (solo roles relevantes) ---
+        sellers_list = [
+            {'id': s.id, 'full_name': s.get_full_name() or s.email, 'role': s.get_role_display()}
+            for s in potential_sellers
+        ]
+        
+        # --- Detalle de transacciones (últimas 100) ---
         results = []
-        for inv in invoices_list:
+        for inv in invoices[:100]:
             results.append({
                 'id': inv.id,
                 'document_number': inv.document_number,
+                'document_type': inv.document_type,
                 'customer_name': inv.customer_name,
                 'total_amount': str(inv.total_amount),
                 'issue_date': inv.issue_date.isoformat() if inv.issue_date else None,
                 'status': inv.status,
-                'seller_name': f"{inv.created_by.first_name} {inv.created_by.last_name}" if inv.created_by else "Sistema",
+                'seller_name': f"{inv.created_by.first_name} {inv.created_by.last_name}".strip() if inv.created_by else "Sistema",
                 'created_at': inv.created_at.isoformat()
             })
             
         return Response({
             'total_sales': stats['total_count'] or 0,
-            'total_revenue': str(stats['total_revenue'] or '0.00'),
+            'total_revenue': str(round(stats['total_revenue'] or Decimal('0'), 2)),
+            'total_profit': str(round(total_profit, 2)),
+            'user_performance': user_performance,
+            'sellers': sellers_list,
             'results': results
         })
     
