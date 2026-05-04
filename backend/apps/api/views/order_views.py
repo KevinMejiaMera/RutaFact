@@ -102,7 +102,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         import traceback
         from apps.inventory.services import InventoryService
         
+        from apps.users.models import User
         logger = logging.getLogger(__name__)
+        logger.info(f"🛒 [Orders] completando pedido: Usuario={request.user} (ID={getattr(request.user, 'id', 'N/A')})")
         order = self.get_object()
         
         if order.status != 'PENDING':
@@ -116,7 +118,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         try:
             with transaction.atomic():
                 # Registrar quién completa el pedido
-                order.seller = request.user
+                if isinstance(request.user, User):
+                    order.seller = request.user
                 order.status = 'COMPLETED'
                 order.save()
 
@@ -141,6 +144,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     # Crear Documento Electrónico (SRI)
                     electronic_doc = ElectronicDocument.objects.create(
                         company=order.company,
+                        created_by=request.user if isinstance(request.user, User) else None,
                         document_type='INVOICE',
                         document_number=document_number,
                         issue_date=timezone.now().date(),
@@ -193,7 +197,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                             quantity=qty,
                             reference=f"Factura {document_number}",
                             notes=f"Venta Pedido #{order.id}",
-                            user=request.user
+                            user=request.user if isinstance(request.user, User) else None
                         )
 
                         total_subtotal += subtotal
@@ -245,6 +249,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     
                     electronic_doc = ElectronicDocument.objects.create(
                         company=order.company,
+                        created_by=request.user if isinstance(request.user, User) else None,
                         document_type='INTERNAL_NOTE',
                         document_number=internal_number,
                         issue_date=timezone.now().date(),
@@ -278,7 +283,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                             quantity=qty,
                             reference=f"Nota {internal_number}",
                             notes=f"Venta Interna Pedido #{order.id}",
-                            user=request.user
+                            user=request.user if isinstance(request.user, User) else None
                         )
                         total_amount += subtotal
 

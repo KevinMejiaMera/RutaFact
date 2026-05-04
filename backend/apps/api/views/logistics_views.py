@@ -112,7 +112,8 @@ class RouteViewSet(viewsets.ModelViewSet):
                         customer_name=customer.name,
                         customer_address=customer.address or '',
                         customer_email=customer.email or '',
-                        status='DRAFT'
+                        status='DRAFT',
+                        created_by=request.user
                     )
                 elif billing_type == 'delivery_note':
                     # Nota de Entrega Interna
@@ -126,7 +127,8 @@ class RouteViewSet(viewsets.ModelViewSet):
                         customer_name=customer_name,
                         customer_address='',
                         customer_email='',
-                        status='INTERNAL'
+                        status='INTERNAL',
+                        created_by=request.user
                     )
                 
                 total_subtotal = Decimal('0.00')

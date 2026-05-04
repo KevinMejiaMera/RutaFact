@@ -86,7 +86,7 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
     search_fields = ["document_number", "customer_name", "customer_identification", "access_key"]
     ordering_fields = ["issue_date", "created_at", "total_amount"]
     ordering = ["-created_at"]
-    permission_classes = [permissions.AllowAny]  # Para pruebas
+    permission_classes = [permissions.IsAuthenticated]
     
     def get_serializer_class(self):
         if self.action == "list":
@@ -103,6 +103,9 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                 from decimal import Decimal, ROUND_HALF_UP
                 from apps.companies.models import Company
                 from django.conf import settings
+                from apps.users.models import User
+                
+                logger.info(f"🚀 Creando factura: Usuario={request.user} (ID={getattr(request.user, 'id', 'N/A')})")
                 
                 # Obtener datos validados
                 validated_data = serializer.validated_data
@@ -179,7 +182,8 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                         customer_address=validated_data.get("customer_address", ""),
                         customer_email=validated_data.get("customer_email", ""),
                         customer_phone=validated_data.get("customer_phone", ""),
-                        status="DRAFT"
+                        status="DRAFT",
+                        created_by=request.user if isinstance(request.user, User) else None
                     )
                 
                 # Función para redondear decimales correctamente
@@ -540,7 +544,8 @@ class ElectronicDocumentViewSet(viewsets.ModelViewSet):
                     total_tax=Decimal(str(data.get("total_tax", "0.00"))),
                     total_amount=Decimal(str(data.get("total_amount", "0.00"))),
                     issue_date=timezone.localtime(timezone.now()).date(),
-                    status="DRAFT"
+                    status="DRAFT",
+                    created_by=request.user
                 )
                 
                 # 2. Si hay ítems específicos (Anulación Parcial)

@@ -12,6 +12,8 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q
 from django.conf import settings
+from django.contrib.auth import get_user_model
+User = get_user_model()
 import logging
 import os
 from functools import wraps
@@ -682,6 +684,7 @@ def sync_document_to_electronic_document(document, document_type):
             'status': document.status,
             'xml_file': '',
             'signed_xml_file': '',
+            'created_by': getattr(document, 'created_by', None),
         }
         
         # Campos específicos según el tipo
@@ -1344,7 +1347,7 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             
             electronic_doc = ElectronicDocument.objects.create(
                 company=company,
-                created_by=request.user,
+                created_by=request.user if isinstance(request.user, User) else None,
                 document_type='INVOICE',
                 document_number=document_number,
                 issue_date=data['issue_date'],
@@ -1418,6 +1421,21 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
                 
                 total_subtotal += subtotal
                 total_tax += tax_amount
+
+                # 🎯 REDUCIR INVENTARIO (NUEVO: Integración con Inventario)
+                from apps.inventory.services import InventoryService
+                from apps.invoicing.models import ProductTemplate
+                product = ProductTemplate.objects.filter(company=company, main_code=item_data['main_code']).first()
+                if product:
+                    InventoryService.register_movement(
+                        company=company,
+                        product=product,
+                        movement_type='OUT',
+                        quantity=quantity,
+                        reference=f"Factura {document_number}",
+                        notes=f"Venta API - {electronic_doc.customer_name}",
+                        user=request.user if isinstance(request.user, User) else None
+                    )
             
             # Actualizar totales
             total_amount = total_subtotal + total_tax
@@ -1543,7 +1561,7 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             # Crear nota de crédito
             credit_note = CreditNote.objects.create(
                 company=company,
-                created_by=request.user,
+                created_by=request.user if isinstance(request.user, User) else None,
                 document_number=document_number,
                 issue_date=data['issue_date'],
                 customer_identification_type=data['customer_identification_type'],
@@ -1687,7 +1705,7 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             # Crear nota de débito
             debit_note = DebitNote.objects.create(
                 company=company,
-                created_by=request.user,
+                created_by=request.user if isinstance(request.user, User) else None,
                 document_number=document_number,
                 issue_date=data['issue_date'],
                 customer_identification_type=data['customer_identification_type'],
@@ -1837,9 +1855,9 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
                 supplier_identification=data['supplier_identification'],
                 supplier_name=data['supplier_name'],
                 supplier_address=data.get('supplier_address', ''),
-                fiscal_period=data['fiscal_period'],
-                total_retained=Decimal(str(data.get('total_retained', 0))),
-                status='DRAFT'
+                supplier_email=data.get('supplier_email', ''),
+                status='DRAFT',
+                created_by=request.user if isinstance(request.user, User) else None
             )
             
             # Generar clave de acceso
@@ -1970,7 +1988,8 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
                 supplier_identification=data['supplier_identification'],
                 supplier_name=data['supplier_name'],
                 supplier_address=data.get('supplier_address', ''),
-                status='DRAFT'
+                status='DRAFT',
+                created_by=request.user if isinstance(request.user, User) else None
             )
             
             # Generar clave de acceso
@@ -2095,10 +2114,16 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             data = request.data
             company = request.validated_company
             sri_config = request.validated_sri_config
+            document_type = data.get('document_type', 'INVOICE')
             
             # Generar número de documento
-            sequence = sri_config.get_next_sequence('INVOICE')
-            document_number = f"{sri_config.establishment_code}-{sri_config.emission_point}-{sequence:09d}"
+            if document_type == 'INVOICE':
+                sequence = sri_config.get_next_sequence('INVOICE')
+                document_number = f"{sri_config.establishment_code}-{sri_config.emission_point}-{sequence:09d}"
+            else:
+                # Para notas internas, usamos un secuencial simple basado en timestamp
+                import time
+                document_number = f"INT-{int(time.time())}"
             
             # Función para manejar decimales
             def fix_decimal(value, places=2):
@@ -2112,7 +2137,7 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             # Crear ElectronicDocument directamente
             electronic_doc = ElectronicDocument.objects.create(
                 company=company,
-                document_type='INVOICE',
+                document_type=document_type,
                 document_number=document_number,
                 issue_date=data['issue_date'],
                 customer_identification_type=data['customer_identification_type'],
@@ -2121,11 +2146,15 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
                 customer_address=data.get('customer_address', ''),
                 customer_email=data.get('customer_email', ''),
                 customer_phone=data.get('customer_phone', ''),
-                status='DRAFT'
+                status='DRAFT' if document_type == 'INVOICE' else 'INTERNAL',
+                created_by=request.user if isinstance(request.user, User) else None
             )
             
-            # Generar clave de acceso
-            electronic_doc.access_key = electronic_doc._generate_access_key()
+            # Generar clave de acceso (Solo para Facturas SRI)
+            if document_type == 'INVOICE':
+                electronic_doc.access_key = electronic_doc._generate_access_key()
+            else:
+                electronic_doc.access_key = f"INTERNAL-{electronic_doc.id}"
             
             # Crear items y calcular totales
             total_subtotal = Decimal('0.00')
@@ -2150,6 +2179,21 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
                     subtotal=subtotal
                 )
                 
+                # 🎯 REDUCIR INVENTARIO (NUEVO)
+                from apps.inventory.services import InventoryService
+                from apps.invoicing.models import ProductTemplate
+                product = ProductTemplate.objects.filter(company=company, main_code=item_data['main_code']).first()
+                if product:
+                    InventoryService.register_movement(
+                        company=company,
+                        product=product,
+                        movement_type='OUT',
+                        quantity=quantity,
+                        reference=f"{'Factura' if document_type == 'INVOICE' else 'Nota de Venta'} {document_number}",
+                        notes=f"{'Venta Móvil' if document_type == 'INVOICE' else 'Nota Venta Interna'} - {electronic_doc.customer_name}",
+                        user=request.user if isinstance(request.user, User) else None
+                    )
+                
                 # Calcular impuesto (IVA 15%)
                 tax_amount = fix_decimal(subtotal * Decimal('15.00') / 100, 2)
                 total_subtotal += subtotal
@@ -2160,18 +2204,22 @@ class SRIDocumentViewSet(viewsets.ModelViewSet):
             electronic_doc.subtotal_without_tax = fix_decimal(total_subtotal, 2)
             electronic_doc.total_tax = fix_decimal(total_tax, 2)
             electronic_doc.total_amount = fix_decimal(total_amount, 2)
-            # PENDIENTE = listo para ser procesado por el worker de Celery
-            electronic_doc.status = 'PENDING'
+            # PENDIENTE = listo para ser procesado por el worker de Celery (Solo Facturas)
+            if document_type == 'INVOICE':
+                electronic_doc.status = 'PENDING'
+            else:
+                electronic_doc.status = 'INTERNAL'
             electronic_doc.save()
             
             logger.info(f'🎉 Invoice ElectronicDocument {electronic_doc.id} created by user {getattr(request.user, "username", "Unknown")}')
             
-            # Despachar tarea Celery para generar XML, firmar y enviar al SRI
-            try:
-                process_document_async.delay(electronic_doc.id)
-                logger.info(f'✅ Tarea Celery despachada para factura {electronic_doc.id}')
-            except Exception as celery_err:
-                logger.warning(f'⚠️ No se pudo despachar tarea Celery: {celery_err}. La factura se procesará en el siguiente ciclo de check_pending_authorizations.')
+            # Despachar tarea Celery para generar XML, firmar y enviar al SRI (Solo Facturas)
+            if document_type == 'INVOICE':
+                try:
+                    process_document_async.delay(electronic_doc.id)
+                    logger.info(f'✅ Tarea Celery despachada para factura {electronic_doc.id}')
+                except Exception as celery_err:
+                    logger.warning(f'⚠️ No se pudo despachar tarea Celery: {celery_err}. La factura se procesará en el siguiente ciclo de check_pending_authorizations.')
             
             # Respuesta con datos de la factura
             response_data = {

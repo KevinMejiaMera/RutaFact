@@ -163,12 +163,74 @@
             <div class="stat-title">Ingresos Totales (USD)</div>
             <div class="stat-value" style="color: var(--primary);">${{ total_revenue|floatformat:2 }}</div>
         </div>
+        <div class="stat-card">
+            <div class="stat-title">Ganancia Estimada (USD)</div>
+            <div class="stat-value" style="color: #4caf50;">${{ total_profit|floatformat:2 }}</div>
+        </div>
     </div>
 
-    <!-- Tabla de Resultados -->
+    <!-- ✅ RENDIMIENTO POR EQUIPO -->
+    <div class="report-card" style="padding: 0; margin-bottom: 30px;">
+        <div style="padding: 25px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
+            <i class="fas fa-users" style="color: var(--primary);"></i>
+            <h3 style="margin: 0; color: white; font-size: 16px;">Rendimiento por Vendedor</h3>
+        </div>
+        <div style="overflow-x: auto; padding: 0 10px 10px;">
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>Vendedor</th>
+                        <th>Rol</th>
+                        <th style="text-align: center;">Nro. Ventas</th>
+                        <th style="text-align: right;">Ingresos (USD)</th>
+                        <th style="text-align: right;">Ganancia (USD)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for perf in user_performance %}
+                    <tr>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--primary-dark, #7a6a3a)); display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; color: #000; flex-shrink: 0;">
+                                    {{ perf.user.first_name|slice:":1"|upper }}{{ perf.user.last_name|slice:":1"|upper }}
+                                </div>
+                                <div>
+                                    <div style="color: white; font-weight: 700;">{{ perf.user.get_full_name }}</div>
+                                    <div style="font-size: 11px; color: var(--text-dim);">{{ perf.user.email }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span style="background: rgba(255,255,255,0.05); padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">
+                                {{ perf.user.get_role_display }}
+                            </span>
+                        </td>
+                        <td style="text-align: center;">
+                            <span style="background: rgba(196,164,132,0.15); color: var(--primary); padding: 5px 14px; border-radius: 20px; font-weight: 900; font-size: 15px;">
+                                {{ perf.count }}
+                            </span>
+                        </td>
+                        <td style="text-align: right; font-weight: 600; color: white; font-size: 15px;">${{ perf.revenue|floatformat:2 }}</td>
+                        <td style="text-align: right; font-weight: 900; color: #4caf50; font-size: 15px;">${{ perf.profit|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-dim);">
+                            <i class="fas fa-chart-bar fa-2x" style="opacity: 0.2; display: block; margin-bottom: 10px;"></i>
+                            No hay actividad de vendedores en este período.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Detalle de Ventas (Todas las facturas) -->
     <div class="report-card" style="padding: 0;">
-        <div style="padding: 25px; border-bottom: 1px solid var(--border);">
-            <h3 style="margin: 0; color: white; font-size: 16px;">Detalle de Ventas</h3>
+        <div style="padding: 25px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
+            <i class="fas fa-file-invoice-dollar" style="color: var(--primary);"></i>
+            <h3 style="margin: 0; color: white; font-size: 16px;">Detalle de Transacciones</h3>
         </div>
         <div style="overflow-x: auto; padding: 0 10px 10px;">
             <table class="report-table">
@@ -192,17 +254,19 @@
                             {% if invoice.created_by %}
                                 {{ invoice.created_by.first_name }} {{ invoice.created_by.last_name }}
                             {% else %}
-                                N/A
+                                <span style="color: rgba(255,255,255,0.2); font-style: italic;">Sin asignar</span>
                             {% endif %}
                         </td>
                         <td style="text-align: right; font-weight: bold; color: white;">${{ invoice.total_amount|floatformat:2 }}</td>
                         <td style="text-align: center;">
                             {% if invoice.status == 'AUTHORIZED' %}
-                                <span style="background: rgba(76, 175, 80, 0.1); color: #4caf50; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold;">Autorizado</span>
+                                <span style="background: rgba(76,175,80,0.1); color: #4caf50; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold;">Autorizado</span>
+                            {% elif invoice.status == 'INTERNAL' %}
+                                <span style="background: rgba(155,176,168,0.1); color: #9BB0A8; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold;">Nota Interna</span>
                             {% elif invoice.status == 'DRAFT' or invoice.status == 'PENDING' %}
-                                <span style="background: rgba(255, 152, 0, 0.1); color: #ff9800; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold;">Pendiente</span>
+                                <span style="background: rgba(255,152,0,0.1); color: #ff9800; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold;">Pendiente</span>
                             {% else %}
-                                <span style="background: rgba(255, 82, 82, 0.1); color: #ff5252; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold;">{{ invoice.get_status_display }}</span>
+                                <span style="background: rgba(255,82,82,0.1); color: #ff5252; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold;">{{ invoice.get_status_display }}</span>
                             {% endif %}
                         </td>
                     </tr>

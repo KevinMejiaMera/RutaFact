@@ -166,6 +166,7 @@ class ElectronicDocumentSerializer(serializers.ModelSerializer):
     xml_file_url = serializers.SerializerMethodField()
     signed_xml_file_url = serializers.SerializerMethodField()
     pdf_file_url = serializers.SerializerMethodField()
+    seller_name = serializers.SerializerMethodField()
     
     class Meta:
         model = ElectronicDocument
@@ -216,6 +217,10 @@ class ElectronicDocumentSerializer(serializers.ModelSerializer):
             'items',
             'taxes',
             
+            # Seller info
+            'created_by',
+            'seller_name',
+            
             # Metadata
             'additional_data',
             'created_at',
@@ -242,6 +247,14 @@ class ElectronicDocumentSerializer(serializers.ModelSerializer):
             if request:
                 return request.build_absolute_uri(obj.pdf_file.url)
         return None
+
+    def get_seller_name(self, obj):
+        if obj.created_by:
+            first_name = getattr(obj.created_by, 'first_name', '')
+            last_name = getattr(obj.created_by, 'last_name', '')
+            name = f"{first_name} {last_name}".strip()
+            return name if name else obj.created_by.email
+        return "Sistema"
 
 
 class ElectronicDocumentCreateSerializer(serializers.ModelSerializer):
@@ -336,6 +349,7 @@ class ElectronicDocumentCreateSerializer(serializers.ModelSerializer):
         # Crear documento
         document = ElectronicDocument.objects.create(
             document_number=document_number,
+            created_by=self.context['request'].user if 'request' in self.context else None,
             **validated_data
         )
         

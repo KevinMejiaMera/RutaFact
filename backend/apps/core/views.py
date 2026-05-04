@@ -1336,31 +1336,20 @@ def admin_pos_view(request):
                 from apps.sri_integration.tasks import process_document_async
                 transaction.on_commit(lambda: process_document_async.delay(doc.id))
                 
-                # 4. Descontar Inventario
+                # 4. Descontar Inventario usando el servicio oficial (NUEVO: para auditoría)
+                from apps.inventory.services import InventoryService
                 for item in items:
                     product = ProductTemplate.objects.get(id=item['id'], company=company)
-                    stock = ProductStock.objects.filter(company=company, product=product).first()
-                    if stock:
-                        prev_stock = stock.quantity
-                        stock.quantity -= Decimal(str(item['quantity']))
-                        stock.save()
-                        
-                        # SINCRONIZAR CON PRODUCT TEMPLATE
-                        product.current_stock -= Decimal(str(item['quantity']))
-                        product.save()
-                        
-                        from apps.inventory.models import StockMovement
-                        StockMovement.objects.create(
-                            company=company,
-                            product=product,
-                            movement_type='OUT',
-                            quantity=Decimal(str(item['quantity'])),
-                            previous_stock=prev_stock,
-                            new_stock=stock.quantity,
-                            reference=doc.document_number,
-                            notes=f"Venta POS a {customer.name}",
-                            created_by=request.user
-                        )
+                    InventoryService.register_movement(
+                        company=company,
+                        product=product,
+                        movement_type='OUT',
+                        quantity=Decimal(str(item['quantity'])),
+                        reference=f"Factura POS {doc.document_number}",
+                        notes=f"Venta POS - {doc.customer_name}",
+                        user=request.user if isinstance(request.user, User) else None
+                    )
+                
                 
             return JsonResponse({
                 'status': 'success', 
@@ -1738,6 +1727,8 @@ def admin_reports_view(request):
     from datetime import datetime
     from django.db import models
     from decimal import Decimal
+    from apps.sri_integration.models import DocumentItem
+    from apps.invoicing.models import ProductTemplate
     
     companies = get_user_companies_secure(request.user)
     if not companies.exists():
@@ -1745,12 +1736,12 @@ def admin_reports_view(request):
         return redirect('home')
     company = companies.first()
     
-    # Base query
+    # Base query — incluye Facturas y Notas de Venta Internas
     invoices = ElectronicDocument.objects.filter(
         company=company,
-        document_type='INVOICE',
-        status__in=['AUTHORIZED', 'DRAFT', 'PENDING']
-    ).order_by('-issue_date', '-created_at')
+        document_type__in=['INVOICE', 'INTERNAL_NOTE'],
+        status__in=['AUTHORIZED', 'DRAFT', 'PENDING', 'INTERNAL']
+    ).select_related('created_by').order_by('-issue_date', '-created_at')
     
     # Get filters
     start_date = request.GET.get('start_date')
@@ -1764,17 +1755,63 @@ def admin_reports_view(request):
     if seller_id:
         invoices = invoices.filter(created_by_id=seller_id)
         
-    # Totals
+    # Totals and Profit Calculation (Global for filtered set)
     total_sales = invoices.count()
     total_revenue = invoices.aggregate(models.Sum('total_amount'))['total_amount__sum'] or Decimal('0')
+    total_profit = Decimal('0')
     
-    # Sellers for filter dropdown
-    sellers = User.objects.filter(company=company, is_active=True).order_by('first_name')
+    # Pre-calculate global profit (efficiently)
+    for inv in invoices:
+        items = DocumentItem.objects.filter(document=inv)
+        for item in items:
+            prod = ProductTemplate.objects.filter(company=company, main_code=item.main_code).first()
+            if prod:
+                cost = prod.purchase_price or Decimal('0')
+                total_profit += (item.unit_price - cost) * item.quantity
+
+    # 3. Aggregated report by User (Seller performance)
+    user_performance = []
+    relevant_roles = ['admin', 'seller', 'dispatcher']
+    
+    # Get all potential sellers in the company
+    potential_sellers = User.objects.filter(
+        company=company, 
+        role__in=relevant_roles,
+        is_active=True
+    ).order_by('first_name')
+    
+    for seller in potential_sellers:
+        seller_invoices = invoices.filter(created_by=seller)
+        s_count = seller_invoices.count()
+        if s_count > 0:
+            s_revenue = seller_invoices.aggregate(models.Sum('total_amount'))['total_amount__sum'] or Decimal('0')
+            s_profit = Decimal('0')
+            
+            # Profit calculation for this seller
+            for s_inv in seller_invoices:
+                s_items = DocumentItem.objects.filter(document=s_inv)
+                for item in s_items:
+                    prod = ProductTemplate.objects.filter(company=company, main_code=item.main_code).first()
+                    if prod:
+                        cost = prod.purchase_price or Decimal('0')
+                        s_profit += (item.unit_price - cost) * item.quantity
+            
+            user_performance.append({
+                'user': seller,
+                'count': s_count,
+                'revenue': s_revenue,
+                'profit': s_profit
+            })
+
+    # Sellers for filter dropdown (Limited to relevant roles)
+    sellers = potential_sellers
     
     context = {
         'invoices': invoices,
         'total_sales': total_sales,
         'total_revenue': total_revenue,
+        'total_profit': total_profit,
+        'user_performance': user_performance, # New aggregated data
         'sellers': sellers,
         'current_start': start_date,
         'current_end': end_date,

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
@@ -11,6 +12,10 @@ from apps.inventory.models import Provider, PurchaseInvoice, PurchaseItem, Produ
 from apps.inventory.services import InventoryService
 from apps.invoicing.models import ProductTemplate
 from apps.companies.models import Company
+from apps.users.models import User
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ProviderViewSet(viewsets.ViewSet):
     """API para proveedores"""
@@ -61,7 +66,7 @@ class ProviderViewSet(viewsets.ViewSet):
             start_sequence=data.get('start_sequence'),
             end_sequence=data.get('end_sequence'),
             expiration_date=data.get('expiration_date'),
-            created_by=request.user
+            created_by=request.user if isinstance(request.user, User) else None
         )
         
         return Response({'id': provider.id, 'name': provider.name}, status=201)
@@ -145,7 +150,8 @@ class PurchaseViewSet(viewsets.ViewSet):
                 }
                 
                 purchase = InventoryService.process_purchase(
-                    company, provider, invoice_data, processed_items, request.user
+                    company, provider, invoice_data, processed_items, 
+                    request.user if isinstance(request.user, User) else None
                 )
 
             return Response({'id': purchase.id, 'total': str(purchase.total_amount)}, status=201)
@@ -255,7 +261,7 @@ class MovementViewSet(viewsets.ViewSet):
                         tax_rate=Decimal('15.00'),
                         tax_code='2',
                         track_inventory=True,
-                        created_by=request.user
+                        created_by=request.user if isinstance(request.user, User) else None
                     )
                 else:
                     if purchase_price is not None:
@@ -274,7 +280,7 @@ class MovementViewSet(viewsets.ViewSet):
                     quantity=quantity,
                     reference='INGRESO DIRECTO',
                     notes=notes,
-                    user=request.user
+                    user=request.user if isinstance(request.user, User) else None
                 )
                 
             return Response({'status': 'success', 'message': 'Stock actualizado correctamente'}, status=201)
@@ -302,6 +308,33 @@ class StockViewSet(viewsets.ViewSet):
                 'last_cost': str(s.last_purchase_price),
                 'price': str(s.product.unit_price),
                 'image': s.product.image.url if s.product.image else None,
+            })
+        return Response(data)
+    
+    @action(detail=False, methods=['get'])
+    def search(self, request):
+        """Buscar productos por nombre o código"""
+        company_id = request.query_params.get('company_id')
+        query = request.query_params.get('q', '').strip()
+        
+        if not company_id:
+            return Response({'error': 'company_id is required'}, status=400)
+            
+        products = ProductTemplate.objects.filter(company_id=company_id, is_active=True)
+        if query:
+            from django.db.models import Q
+            products = products.filter(Q(name__icontains=query) | Q(main_code__icontains=query))
+            
+        data = []
+        for p in products[:20]: # Limitar a 20 sugerencias
+            data.append({
+                'id': p.id,
+                'name': p.name,
+                'main_code': p.main_code,
+                'purchase_price': str(p.purchase_price),
+                'unit_price': str(p.unit_price),
+                'tax_rate': str(p.tax_rate),
+                'image': p.image.url if p.image else None,
             })
         return Response(data)
 

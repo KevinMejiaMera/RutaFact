@@ -264,14 +264,12 @@
                     <tbody id="items-body">
                         <tr class="item-row">
                             <td>
-                                <div style="display: flex; gap: 10px; align-items: flex-start;">
-                                    <div style="flex: 1;">
-                                        <input type="text" name="product_name[]" class="form-control" list="products-list" placeholder="Buscar o crear producto..." required style="padding: 12px;" onchange="autoFillProduct(this)" autocomplete="off">
-                                        <p style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Escriba para filtrar sugerencias o crear nuevo.</p>
+                                <div style="position: relative;">
+                                    <input type="text" name="product_name[]" class="form-control product-search-field" placeholder="Buscar o crear producto..." required style="padding: 12px;" onkeyup="searchProductsInRow(this)" autocomplete="off">
+                                    <input type="hidden" name="product_id[]" class="product-id-field">
+                                    <div class="search-results-dropdown">
+                                        <!-- AJAX results -->
                                     </div>
-                                    <button type="button" class="btn-primary" style="padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border);" onclick="openGlobalSearch(this)" title="Buscar en catálogo completo">
-                                        <i class="fas fa-search"></i>
-                                    </button>
                                 </div>
                                 <div style="margin-top: 8px; display: flex; align-items: center; gap: 15px;">
                                     <label style="font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 5px; cursor: pointer; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 5px;">
@@ -340,6 +338,7 @@
         
         // Limpiar valores
         newRow.querySelector('input[name="product_name[]"]').value = "";
+        newRow.querySelector('input[name="product_id[]"]').value = "";
         newRow.querySelector('input[name="quantity[]"]').value = "1";
         newRow.querySelector('input[name="cost[]"]').value = "0.00";
         newRow.querySelector('input[name="unit_price[]"]').value = "0.00";
@@ -347,6 +346,8 @@
         newRow.querySelector('input[name="product_image[]"]').value = "";
         newRow.querySelector('.img-preview').style.display = 'none';
         newRow.querySelector('.row-subtotal').textContent = "$0.00";
+        newRow.querySelector('.search-results-dropdown').style.display = 'none';
+        newRow.querySelector('.search-results-dropdown').innerHTML = '';
         
         body.appendChild(newRow);
     }
@@ -536,39 +537,62 @@
 </div>
 
 <script>
-    let activeSearchInput = null;
+    let searchTimer;
+    function searchProductsInRow(input) {
+        clearTimeout(searchTimer);
+        const query = input.value.trim();
+        const row = input.closest('tr');
+        const dropdown = row.querySelector('.search-results-dropdown');
 
-    function openGlobalSearch(btn) {
-        activeSearchInput = btn.closest('td').querySelector('input[name="product_name[]"]');
-        document.getElementById('searchModal').style.display = 'block';
-        document.getElementById('globalSearchInput').value = "";
-        filterGlobalSearch();
-        document.getElementById('globalSearchInput').focus();
-    }
-
-    function closeSearchModal() {
-        document.getElementById('searchModal').style.display = 'none';
-    }
-
-    function filterGlobalSearch() {
-        const query = document.getElementById('globalSearchInput').value.toUpperCase();
-        const rows = document.querySelectorAll('.search-item-row');
-        rows.forEach(row => {
-            const text = row.innerText.toUpperCase();
-            row.style.display = text.includes(query) ? '' : 'none';
-        });
-    }
-
-    function selectProductFromSearch(name, tax, cost, price) {
-        if (activeSearchInput) {
-            activeSearchInput.value = name;
-            const row = activeSearchInput.closest('tr');
-            row.querySelector('input[name="tax_rate[]"]').value = tax;
-            row.querySelector('input[name="cost[]"]').value = cost;
-            row.querySelector('input[name="unit_price[]"]').value = price;
-            calculateRow(activeSearchInput);
-            closeSearchModal();
+        if (query.length < 2) {
+            dropdown.style.display = 'none';
+            return;
         }
+
+        searchTimer = setTimeout(async () => {
+            try {
+                const companyId = "{{ company.id }}";
+                const response = await fetch(`/api/inventory/stock/search/?company_id=${companyId}&q=${query}`);
+                const data = await response.json();
+
+                if (data.length > 0) {
+                    dropdown.innerHTML = data.map(p => `
+                        <div class="search-result-item" 
+                             onclick="selectPurchaseProduct(this, '${p.id}', '${p.name.replace(/'/g, "\\'")}', '${p.tax_rate}', '${p.purchase_price}', '${p.unit_price}')">
+                            <div style="font-weight: 600; color: white; font-size: 13px;">${p.name}</div>
+                            <div style="font-size: 11px; color: var(--text-dim); display: flex; justify-content: space-between;">
+                                <span>${p.main_code || 'SIN CÓDIGO'}</span>
+                                <span style="color: var(--primary);">$${parseFloat(p.unit_price).toFixed(2)}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                    dropdown.style.display = 'block';
+                } else {
+                    dropdown.innerHTML = '<div style="padding: 15px; color: var(--text-dim); font-size: 12px; text-align: center;">Producto nuevo (se creará al guardar)</div>';
+                    dropdown.style.display = 'block';
+                }
+            } catch (err) {
+                console.error("Error en búsqueda:", err);
+            }
+        }, 300);
     }
+
+    function selectPurchaseProduct(element, id, name, tax, cost, price) {
+        const row = element.closest('tr');
+        row.querySelector('input[name="product_name[]"]').value = name;
+        row.querySelector('input[name="product_id[]"]').value = id;
+        row.querySelector('input[name="tax_rate[]"]').value = tax;
+        row.querySelector('input[name="cost[]"]').value = cost;
+        row.querySelector('input[name="unit_price[]"]').value = price;
+        row.querySelector('.search-results-dropdown').style.display = 'none';
+        calculateRow(row.querySelector('input[name="quantity[]"]'));
+    }
+
+    // Cerrar dropdowns al hacer click fuera
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.item-row')) {
+            document.querySelectorAll('.search-results-dropdown').forEach(d => d.style.display = 'none');
+        }
+    });
 </script>
 {% endblock %}

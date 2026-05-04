@@ -35,20 +35,26 @@ class DualTokenAuthentication(BaseAuthentication):
         """
         auth_header = request.META.get('HTTP_AUTHORIZATION')
         
-        if not auth_header or not auth_header.startswith('Token '):
+        if not auth_header:
+            return None
+            
+        logger.debug(f"🔍 [DualAuth] Header recibido: {auth_header[:20]}...")
+        
+        if not auth_header.startswith('Token '):
             return None
         
         try:
             token_key = auth_header.split(' ')[1]
         except IndexError:
+            logger.warning("🚨 [DualAuth] Header malformado (sin token)")
             return None
         
         # 🔍 DETERMINAR TIPO DE TOKEN
         if token_key.startswith('vsr_'):
-            logger.info(f"🔑 Company token detected: {token_key[:12]}...")
+            logger.info(f"🔑 [DualAuth] Company token detectado: {token_key[:12]}...")
             return self.authenticate_company_token(request, token_key)
         else:
-            logger.info(f"👤 User token detected: {token_key[:12]}...")
+            logger.info(f"👤 [DualAuth] User token detectado (posible DRF o JWT): {token_key[:12]}...")
             return self.authenticate_user_token(request, token_key)
     
     def authenticate_company_token(self, request, token_key):
@@ -102,7 +108,9 @@ class DualTokenAuthentication(BaseAuthentication):
             (User, Token)
         """
         try:
+            from rest_framework.authtoken.models import Token
             user_token = Token.objects.select_related('user').get(key=token_key)
+            logger.info(f"✅ [DualAuth] Token DRF válido para: {user_token.user.username}")
             
             # Verificar que el usuario esté activo
             if not user_token.user.is_active:

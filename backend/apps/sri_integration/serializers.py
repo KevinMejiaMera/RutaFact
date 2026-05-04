@@ -128,8 +128,17 @@ class ElectronicDocumentListSerializer(serializers.ModelSerializer):
         model = ElectronicDocument
         fields = [
             'id', 'document_number', 'document_type', 'status',
-            'issue_date', 'customer_name', 'total_amount', 'created_at'
+            'issue_date', 'customer_name', 'total_amount', 'created_at',
+            'created_by', 'seller_name'
         ]
+    
+    seller_name = serializers.SerializerMethodField()
+
+    def get_seller_name(self, obj):
+        if obj.created_by:
+            name = f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+            return name if name else obj.created_by.email
+        return "Sistema"
 
 class ElectronicDocumentSerializer(serializers.ModelSerializer):
     """
@@ -142,6 +151,14 @@ class ElectronicDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ElectronicDocument
         fields = '__all__'
+    
+    seller_name = serializers.SerializerMethodField()
+
+    def get_seller_name(self, obj):
+        if obj.created_by:
+            name = f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+            return name if name else obj.created_by.email
+        return "Sistema"
         
     def get_payment_methods(self, obj):
         payments = obj.payment_methods.all()
