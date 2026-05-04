@@ -58,7 +58,8 @@ RUN touch /app/storage/logs/rutafact.log \
 
 # Copiar entrypoint y dar permisos
 COPY backend/entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+# Convertir CRLF → LF (fix para Windows)
+RUN sed -i 's/\r//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Dar permisos a los archivos y carpetas
 RUN chown -R appuser:appuser /app && \

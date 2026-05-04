@@ -34,7 +34,14 @@ services:
     build: .
     image: rutafact_app:latest
     container_name: RutaFact_backend
-    command: sh -c "python manage.py migrate --noinput && daphne -b 0.0.0.0 -p 8000 rutafact.asgi:application"
+    # Fix CRLF: evitamos entrypoint.sh con comandos inline en /bin/sh
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /app/logs /app/storage/logs /app/storage/backups /app/staticfiles /app/mediafiles
+        touch /app/logs/celery.log /app/storage/logs/rutafact.log /app/storage/logs/gunicorn_access.log /app/storage/logs/gunicorn_error.log
+        python manage.py migrate --noinput
+        daphne -b 0.0.0.0 -p 8000 rutafact.asgi:application
     volumes:
       - ./backend:/app
       - rutafact_static:/app/staticfiles
@@ -52,7 +59,8 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
     env_file:
-      - .env
+      - path: .env
+        required: false
     restart: unless-stopped
     networks:
       - general-net
@@ -67,7 +75,12 @@ services:
     build: .
     image: rutafact_app:latest
     container_name: RutaFact_celery
-    command: celery -A rutafact worker --loglevel=info --concurrency=1 -Q celery,sri_processing,sri_authorization,sri_maintenance
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /app/logs /app/storage/logs
+        touch /app/logs/celery.log /app/storage/logs/celery_worker.log
+        celery -A rutafact worker --loglevel=info --concurrency=1 -Q celery,sri_processing,sri_authorization,sri_maintenance
     volumes:
       - ./backend:/app
     depends_on:
@@ -80,7 +93,8 @@ services:
       - DB_HOST=rutafact-db
       - PYTHONUNBUFFERED=1
     env_file:
-      - .env
+      - path: .env
+        required: false
     restart: unless-stopped
     networks:
       - general-net
@@ -95,7 +109,12 @@ services:
     build: .
     image: rutafact_app:latest
     container_name: RutaFact_beat
-    command: celery -A rutafact beat --loglevel=info --scheduler=django_celery_beat.schedulers:DatabaseScheduler
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /app/logs /app/storage/logs
+        touch /app/logs/celery.log /app/storage/logs/celery_beat.log
+        celery -A rutafact beat --loglevel=info --scheduler=django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - ./backend:/app
     depends_on:
@@ -108,7 +127,8 @@ services:
       - REDIS_HOST=rutafact-redis
       - DB_HOST=rutafact-db
     env_file:
-      - .env
+      - path: .env
+        required: false
     restart: unless-stopped
     networks:
       - general-net
@@ -121,7 +141,11 @@ services:
     build: .
     image: rutafact_app:latest
     container_name: RutaFact_flower
-    command: celery -A rutafact flower --port=5555 --broker_api=http://guest:guest@rutafact-redis:6379/0
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /app/logs /app/storage/logs
+        celery -A rutafact flower --port=5555
     volumes:
       - ./backend:/app
     ports:
@@ -133,19 +157,24 @@ services:
       - REDIS_PASSWORD=Redis2026Secure!
       - REDIS_HOST=rutafact-redis
     env_file:
-      - .env
+      - path: .env
+        required: false
     restart: unless-stopped
     networks:
       - general-net
+
   ngrok:
     image: ngrok/ngrok:latest
     container_name: RutaFact_ngrok
     environment:
-      - NGROK_AUTHTOKEN=3CUdbJv5TLp5oYua8r8Ip5YGN0n_2bmRLJi1CYMvWHMBAPjMQ
+      # Usa variable de entorno o el token por defecto
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:-3CUdbJv5TLp5oYua8r8Ip5YGN0n_2bmRLJi1CYMvWHMBAPjMQ}
     command:
       - "http"
       - "backend:8000"
-      - "--url=jolly-disprove-swear.ngrok-free.dev"
+      # Sin --url: genera subdominio aleatorio -> funciona en CUALQUIER máquina sin conflicto
+      # Si quieres dominio fijo, comenta la línea de arriba y descomenta:
+      # - "--url=TU_DOMINIO_UNICO.ngrok-free.app"
     depends_on:
       - backend
     restart: unless-stopped
@@ -160,4 +189,3 @@ volumes:
 networks:
   general-net:
     driver: bridge
-
