@@ -49,7 +49,7 @@ class ProductTemplateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'company', 'company_name', 'category', 'category_name',
             'product_type', 'product_type_display', 'main_code', 'auxiliary_code',
-            'name', 'description', 'unit_of_measure', 'unit_price',
+            'name', 'description', 'unit_of_measure', 'purchase_price', 'unit_price',
             'tax_rate', 'tax_code', 'tax_code_display',
             'track_inventory', 'current_stock', 'minimum_stock', 'is_low_stock',
             'additional_details', 'is_active', 'created_at', 'updated_at'

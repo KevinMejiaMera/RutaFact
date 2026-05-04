@@ -204,7 +204,7 @@
             {% csrf_token %}
             <datalist id="products-list">
                 {% for prod in products %}
-                    <option value="{{ prod.name }}" data-tax="{{ prod.tax_rate }}" data-price="{{ prod.unit_price }}">
+                    <option value="{{ prod.name }}" data-tax="{{ prod.tax_rate }}" data-cost="{{ prod.purchase_price }}" data-price="{{ prod.unit_price }}">
                 {% endfor %}
             </datalist>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
@@ -252,31 +252,40 @@
                 <table id="items-table">
                     <thead>
                         <tr>
-                            <th style="width: 40%;">Producto</th>
-                            <th style="width: 12%;">Cantidad</th>
-                            <th style="width: 18%;">Costo (Inc. IVA)</th>
-                            <th style="width: 15%;">IVA (%)</th>
-                            <th style="width: 15%;">Total</th>
+                            <th style="width: 30%;">Producto</th>
+                            <th style="width: 10%;">Cantidad</th>
+                            <th style="width: 15%;">Costo (Inc. IVA)</th>
+                            <th style="width: 15%;">P. Venta</th>
+                            <th style="width: 12%;">IVA (%)</th>
+                            <th style="width: 12%;">Total</th>
                             <th style="width: 6%;"></th>
                         </tr>
                     </thead>
                     <tbody id="items-body">
                         <tr class="item-row">
                             <td>
-                                <input type="text" name="product_name[]" class="form-control" list="products-list" placeholder="Nombre del producto..." required style="padding: 8px;" onchange="autoFillProduct(this)" autocomplete="off">
-                                <p style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Escriba para crear uno nuevo o seleccione de la lista.</p>
-                                <div style="margin-top: 8px;">
-                                    <label style="font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 5px; cursor: pointer; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 5px; width: fit-content;">
+                                <div style="display: flex; gap: 10px; align-items: flex-start;">
+                                    <div style="flex: 1;">
+                                        <input type="text" name="product_name[]" class="form-control" list="products-list" placeholder="Buscar o crear producto..." required style="padding: 12px;" onchange="autoFillProduct(this)" autocomplete="off">
+                                        <p style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Escriba para filtrar sugerencias o crear nuevo.</p>
+                                    </div>
+                                    <button type="button" class="btn-primary" style="padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border);" onclick="openGlobalSearch(this)" title="Buscar en catálogo completo">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                                <div style="margin-top: 8px; display: flex; align-items: center; gap: 15px;">
+                                    <label style="font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 5px; cursor: pointer; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 5px;">
                                         <i class="fas fa-camera"></i> Foto
                                         <input type="file" name="product_image[]" accept="image/*" style="display: none;" onchange="previewImage(this)">
                                     </label>
-                                    <div class="img-preview" style="display: none; margin-top: 5px;">
-                                        <img src="" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover; border: 1px solid var(--border);">
+                                    <div class="img-preview" style="display: none;">
+                                        <img src="" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border);">
                                     </div>
                                 </div>
                             </td>
-                            <td><input type="number" name="quantity[]" step="0.01" value="1" onchange="calculateRow(this)" class="form-control no-spin" style="text-align: center;"></td>
+                            <td><input type="number" name="quantity[]" step="1" value="1" onchange="calculateRow(this)" class="form-control no-spin" style="text-align: center; font-weight: bold; font-size: 16px;"></td>
                             <td><input type="number" name="cost[]" step="0.0001" value="0.00" onchange="calculateRow(this)" class="form-control no-spin" style="text-align: right;"></td>
+                            <td><input type="number" name="unit_price[]" step="0.0001" value="0.00" class="form-control no-spin" style="text-align: right;" placeholder="Venta"></td>
                             <td><input type="number" name="tax_rate[]" step="0.01" value="15.00" onchange="calculateRow(this)" class="form-control no-spin" style="text-align: center;"></td>
                             <td class="row-subtotal" style="font-weight: 600; color: white; text-align: right;">$0.00</td>
                             <td style="text-align: center;"><button type="button" onclick="removeRow(this)" style="background: none; border: none; color: #ff5c5c; cursor: pointer; font-size: 16px;"><i class="fas fa-times-circle"></i></button></td>
@@ -333,6 +342,7 @@
         newRow.querySelector('input[name="product_name[]"]').value = "";
         newRow.querySelector('input[name="quantity[]"]').value = "1";
         newRow.querySelector('input[name="cost[]"]').value = "0.00";
+        newRow.querySelector('input[name="unit_price[]"]').value = "0.00";
         newRow.querySelector('input[name="tax_rate[]"]').value = "15.00";
         newRow.querySelector('input[name="product_image[]"]').value = "";
         newRow.querySelector('.img-preview').style.display = 'none';
@@ -349,10 +359,12 @@
         if (option) {
             const row = input.closest('tr');
             const tax = option.getAttribute('data-tax');
+            const cost = option.getAttribute('data-cost');
             const price = option.getAttribute('data-price');
             
             if (tax) row.querySelector('input[name="tax_rate[]"]').value = tax;
-            if (price) row.querySelector('input[name="cost[]"]').value = price;
+            if (cost) row.querySelector('input[name="cost[]"]').value = cost;
+            if (price) row.querySelector('input[name="unit_price[]"]').value = price;
             
             calculateRow(input);
         }
@@ -481,6 +493,82 @@
                 <button class="btn-primary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
             </div>
         `;
+    }
+</script>
+
+<div id="searchModal" class="modal" style="z-index: 1100;">
+    <div class="modal-content" style="max-width: 600px; padding: 25px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="color: white; font-size: 18px; margin: 0;">Buscar en Catálogo</h3>
+            <i class="fas fa-times" style="cursor: pointer; color: var(--text-dim); font-size: 20px;" onclick="closeSearchModal()"></i>
+        </div>
+        <div class="form-group" style="margin-bottom: 15px;">
+            <input type="text" id="globalSearchInput" class="form-control" placeholder="Escriba código o nombre..." style="padding: 15px; background: rgba(255,255,255,0.05); font-size: 16px;" onkeyup="filterGlobalSearch()">
+        </div>
+        <div style="max-height: 400px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid var(--border);">
+            <table style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th style="padding: 12px; font-size: 10px; background: rgba(255,255,255,0.02);">Producto</th>
+                        <th style="padding: 12px; font-size: 10px; text-align: right; background: rgba(255,255,255,0.02);">Precio</th>
+                        <th style="padding: 12px; font-size: 10px; text-align: center; background: rgba(255,255,255,0.02);">Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="globalSearchBody">
+                    {% for prod in products %}
+                    <tr class="search-item-row" style="cursor: pointer;" onclick="selectProductFromSearch('{{ prod.name|escapejs }}', '{{ prod.tax_rate }}', '{{ prod.purchase_price }}', '{{ prod.unit_price }}')">
+                        <td style="padding: 12px; border-bottom: 1px solid var(--border);">
+                            <div style="font-weight: 600; color: white;">{{ prod.name }}</div>
+                            <div style="font-size: 11px; color: var(--text-dim);">{{ prod.main_code }}</div>
+                        </td>
+                        <td style="padding: 12px; border-bottom: 1px solid var(--border); text-align: right; color: var(--primary); font-weight: bold;">
+                            ${{ prod.unit_price }}
+                        </td>
+                        <td style="padding: 12px; border-bottom: 1px solid var(--border); text-align: center;">
+                            <button type="button" class="action-btn" style="padding: 5px 12px;"><i class="fas fa-plus"></i></button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    let activeSearchInput = null;
+
+    function openGlobalSearch(btn) {
+        activeSearchInput = btn.closest('td').querySelector('input[name="product_name[]"]');
+        document.getElementById('searchModal').style.display = 'block';
+        document.getElementById('globalSearchInput').value = "";
+        filterGlobalSearch();
+        document.getElementById('globalSearchInput').focus();
+    }
+
+    function closeSearchModal() {
+        document.getElementById('searchModal').style.display = 'none';
+    }
+
+    function filterGlobalSearch() {
+        const query = document.getElementById('globalSearchInput').value.toUpperCase();
+        const rows = document.querySelectorAll('.search-item-row');
+        rows.forEach(row => {
+            const text = row.innerText.toUpperCase();
+            row.style.display = text.includes(query) ? '' : 'none';
+        });
+    }
+
+    function selectProductFromSearch(name, tax, cost, price) {
+        if (activeSearchInput) {
+            activeSearchInput.value = name;
+            const row = activeSearchInput.closest('tr');
+            row.querySelector('input[name="tax_rate[]"]').value = tax;
+            row.querySelector('input[name="cost[]"]').value = cost;
+            row.querySelector('input[name="unit_price[]"]').value = price;
+            calculateRow(activeSearchInput);
+            closeSearchModal();
+        }
     }
 </script>
 {% endblock %}

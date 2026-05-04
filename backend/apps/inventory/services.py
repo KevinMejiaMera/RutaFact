@@ -41,10 +41,12 @@ class InventoryService:
             product_id = item.get('product_id')
             qty = Decimal(str(item.get('quantity', 0)))
             cost_inclusive = Decimal(str(item.get('cost_inclusive', 0)))
+            # El usuario ahora puede enviar un unit_price (venta) sugerido
+            selling_price = Decimal(str(item.get('unit_price', cost_inclusive)))
             tax_rate = Decimal(str(item.get('tax_rate', 15.00)))
             image = item.get('image')
 
-            print(f"🔹 [Item {i}] Name: {name}, Qty: {qty}, Cost: {cost_inclusive}")
+            print(f"🔹 [Item {i}] Name: {name}, Qty: {qty}, Cost: {cost_inclusive}, Sale: {selling_price}")
 
             if product_id:
                 print(f"  - Using existing product_id: {product_id}")
@@ -63,7 +65,8 @@ class InventoryService:
                         name=name,
                         main_code=main_code,
                         description=name,
-                        unit_price=cost_inclusive, # Precio base sugerido
+                        purchase_price=cost_inclusive,
+                        unit_price=selling_price,
                         tax_rate=tax_rate,
                         tax_code='2',
                         track_inventory=True,
@@ -76,7 +79,12 @@ class InventoryService:
                 print(f"  - Skipping empty item at index {i}")
                 continue
 
-            # Actualizar datos del producto (Impuesto y tal vez imagen)
+            # Actualizar datos del producto
+            product.purchase_price = cost_inclusive
+            # Si el usuario envió un precio de venta diferente al de compra, lo actualizamos
+            if selling_price > cost_inclusive:
+                product.unit_price = selling_price
+            
             product.tax_rate = tax_rate
             if image:
                 print(f"  - Saving product image for item {i}")

@@ -213,37 +213,56 @@ class MovementViewSet(viewsets.ViewSet):
         product_id = data.get('product_id')
         product_name = data.get('product_name', '').strip()
         quantity_str = data.get('quantity', '0')
+        purchase_price_str = data.get('purchase_price')
+        unit_price_str = data.get('unit_price')
         notes = data.get('notes', 'Ingreso Directo (Móvil)')
         
         if not company_id:
             return Response({'error': 'company_id es requerido'}, status=400)
             
         try:
-            quantity = Decimal(str(quantity_str))
+            quantity_decimal = Decimal(str(quantity_str))
+            quantity = int(quantity_decimal) # Enforce integer as requested
+            
+            purchase_price = Decimal(str(purchase_price_str)) if purchase_price_str is not None else None
+            unit_price = Decimal(str(unit_price_str)) if unit_price_str is not None else None
+
             if quantity <= 0:
-                return Response({'error': 'La cantidad debe ser mayor a cero'}, status=400)
+                return Response({'error': 'La cantidad debe ser mayor a cero y entera'}, status=400)
                 
             company = get_object_or_404(Company, id=company_id)
             
             if product_id:
                 product = get_object_or_404(ProductTemplate, id=product_id, company=company)
+                if purchase_price is not None:
+                    product.purchase_price = purchase_price
+                if unit_price is not None:
+                    product.unit_price = unit_price
+                product.save()
             elif product_name:
                 # Buscar por nombre exacto (case insensitive)
                 product = ProductTemplate.objects.filter(company=company, name__iexact=product_name).first()
                 if not product:
                     import time
-                    main_code = f"P-{int(time.time())}"
+                    main_code = f"AUTO-{int(time.time())}"
                     product = ProductTemplate.objects.create(
                         company=company,
                         name=product_name.upper(),
                         main_code=main_code,
                         description=product_name,
-                        unit_price=Decimal('0'),
+                        purchase_price=purchase_price or Decimal('0'),
+                        unit_price=unit_price or Decimal('0'),
                         tax_rate=Decimal('15.00'),
                         tax_code='2',
                         track_inventory=True,
                         created_by=request.user
                     )
+                else:
+                    if purchase_price is not None:
+                        product.purchase_price = purchase_price
+                    if unit_price is not None:
+                        product.unit_price = unit_price
+                    product.save()
             else:
                 return Response({'error': 'Debe proporcionar product_id o product_name'}, status=400)
                 

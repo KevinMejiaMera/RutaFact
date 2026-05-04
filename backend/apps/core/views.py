@@ -1096,10 +1096,15 @@ def admin_direct_stock_entry(request):
     if request.method == 'POST':
         product_name = request.POST.get('product_name', '').strip()
         quantity_str = request.POST.get('quantity', '0')
+        purchase_price_str = request.POST.get('purchase_price', '0')
+        unit_price_str = request.POST.get('unit_price', '0')
         notes = request.POST.get('notes', 'Ingreso Directo de Mercadería (Sin compra)')
         
         try:
             quantity = Decimal(quantity_str.replace(',', '.'))
+            purchase_price = Decimal(purchase_price_str.replace(',', '.')) if purchase_price_str else None
+            unit_price = Decimal(unit_price_str.replace(',', '.')) if unit_price_str else None
+            
             if not company:
                 messages.error(request, "No se encontró empresa asociada.")
                 return redirect('admin_inventory')
@@ -1119,12 +1124,20 @@ def admin_direct_stock_entry(request):
                         name=product_name.upper(),
                         main_code=main_code,
                         description=product_name,
-                        unit_price=Decimal('0'),
+                        purchase_price=purchase_price or Decimal('0'),
+                        unit_price=unit_price or Decimal('0'),
                         tax_rate=Decimal('15.00'),
                         tax_code='2',
                         track_inventory=True,
                         created_by=request.user
                     )
+                else:
+                    # Si existe, actualizamos los precios si se proporcionaron
+                    if purchase_price:
+                        product.purchase_price = purchase_price
+                    if unit_price:
+                        product.unit_price = unit_price
+                    product.save()
 
                 InventoryService.register_movement(
                     company=company,

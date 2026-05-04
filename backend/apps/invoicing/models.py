@@ -280,12 +280,21 @@ class ProductTemplate(BaseModel):
         help_text=_('Unit of measure (u, kg, m, etc.)')
     )
     
+    purchase_price = models.DecimalField(
+        _('purchase price'),
+        max_digits=12,
+        decimal_places=6,
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text=_('Base purchase cost')
+    )
+    
     unit_price = models.DecimalField(
         _('unit price'),
         max_digits=12,
         decimal_places=6,
         validators=[MinValueValidator(0)],
-        help_text=_('Default unit price')
+        help_text=_('Default selling price')
     )
     
     # Configuración de impuestos
