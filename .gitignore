@@ -1,6 +1,6 @@
 
 # Variables de entorno con credenciales
-.env
+# .env
 .env.local
 .env.prod
 .env.production
@@ -152,7 +152,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+# .env
 .venv
 env/
 venv/
