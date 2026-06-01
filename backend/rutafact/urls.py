@@ -134,6 +134,14 @@ else:  # if not settings.DEBUG
         path('status/', lambda request: HttpResponse("active", content_type='text/plain'), name='status'),
     ]
     
+    from django.views.static import serve
+    from django.urls import re_path
+    
+    # Servir media files en produccion (temporal/solucion rapida para logo y descargas)
+    urlpatterns += [
+        re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+    ]
+    
     print("[OK] URLs de produccion configuradas")
 
 # ==========================================
