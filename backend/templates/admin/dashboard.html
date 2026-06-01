@@ -74,9 +74,17 @@
                 <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; font-weight: bold;">Razón Social</label>
                 <input type="text" id="new_business_name" class="form-control" placeholder="Ej: Mi Empresa S.A." required style="width: 100%; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-main);">
             </div>
-            <div style="margin-bottom: 20px;">
+            <div style="margin-bottom: 15px;">
                 <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; font-weight: bold;">RUC</label>
                 <input type="text" id="new_ruc" class="form-control" placeholder="Ej: 0999999999001" required maxlength="13" style="width: 100%; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-main);">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; font-weight: bold;">Correo Electrónico</label>
+                <input type="email" id="new_email" class="form-control" placeholder="Ej: contacto@miempresa.com" required style="width: 100%; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-main);">
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; font-weight: bold;">Dirección</label>
+                <input type="text" id="new_address" class="form-control" placeholder="Ej: Av. Principal 123" required style="width: 100%; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-main);">
             </div>
             <button type="submit" class="btn-primary" style="width: 100%; justify-content: center;" id="btnSubmitCompany">Guardar y Continuar</button>
         </form>
@@ -102,8 +110,8 @@
             business_name: document.getElementById('new_business_name').value,
             ruc: document.getElementById('new_ruc').value,
             trade_name: document.getElementById('new_business_name').value,
-            email: 'temporal@rutafact.com',
-            address: 'S/N',
+            email: document.getElementById('new_email').value,
+            address: document.getElementById('new_address').value,
             is_active: true
         };
 
