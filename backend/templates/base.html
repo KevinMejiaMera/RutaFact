@@ -612,8 +612,7 @@
         };
 
         socket.onclose = function(e) {
-            console.error('🔌 [WS] Socket cerrado inesperadamente. Reintentando...');
-            setTimeout(() => window.location.reload(), 5000); // Intento de reconexión rústico
+            console.error('🔌 [WS] Socket cerrado inesperadamente. Desactivando recarga para evitar bucle.');
         };
     </script>
 </body>
