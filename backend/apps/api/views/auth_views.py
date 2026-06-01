@@ -136,7 +136,7 @@ def _get_full_user_data(user, request=None):
         defaults={
             'company': user.company or Company.objects.first(),
             'name': f"{user.first_name} {user.last_name}".strip() or user.email,
-            'identification': '9999999999',
+            'identification': f"999{user.id:07d}",
             'identification_type': '05',
             'email': user.email
         }
@@ -407,7 +407,7 @@ def update_profile(request):
         defaults={
             'company': user.company or Company.objects.first(),
             'name': f"{user.first_name} {user.last_name}".strip() or user.email,
-            'identification': data.get('identification', '9999999999'),
+            'identification': data.get('identification') or f"999{user.id:07d}",
             'identification_type': '05',
             'email': user.email
         }
