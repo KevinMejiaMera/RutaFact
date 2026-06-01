@@ -326,7 +326,7 @@
 
         <div class="products-grid" id="productsGrid">
             {% for product in products %}
-            <div class="product-card" onclick="addToCart({{ product.id }}, '{{ product.name }}', {{ product.unit_price|unlocalize }}, '{% if product.image %}{{ product.image.url }}{% endif %}', {{ product.tax_rate|unlocalize }}, {{ product.current_stock|unlocalize }}, {{ product.track_inventory|yesno:'true,false' }})">
+            <div class="product-card" onclick="addToCart({{ product.id }}, '{{ product.name|escapejs }}', {{ product.unit_price|unlocalize }}, '{% if product.image %}{{ product.image.url }}{% endif %}', {{ product.tax_rate|unlocalize }}, {{ product.current_stock|unlocalize }}, {{ product.track_inventory|yesno:'true,false' }})">
                 <div class="product-img">
                     {% if product.image %}
                         <img src="{{ product.image.url }}">

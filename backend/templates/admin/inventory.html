@@ -166,8 +166,8 @@
                         <div style="display: flex; gap: 8px; justify-content: flex-end;">
                             <button title="Ver Detalles" class="action-btn" onclick="showStockDetails({{ item.id }})"><i class="fas fa-eye"></i></button>
                             <button title="Editar Producto" class="action-btn" onclick="openEditProductModal({{ item.product.id }})"><i class="fas fa-edit" style="color: #FFC107;"></i></button>
-                            <button title="Ajuste Manual" class="action-btn" onclick="openAdjustModal({{ item.id }}, '{{ item.product.name }}', {{ item.quantity }})"><i class="fas fa-tools" style="color: var(--primary);"></i></button>
-                            <button title="Eliminar" class="action-btn" onclick="confirmDeleteProduct({{ item.product.id }}, '{{ item.product.name }}')"><i class="fas fa-trash" style="color: #ff5c5c;"></i></button>
+                            <button title="Ajuste Manual" class="action-btn" onclick="openAdjustModal({{ item.id }}, '{{ item.product.name|escapejs }}', {{ item.quantity }})"><i class="fas fa-tools" style="color: var(--primary);"></i></button>
+                            <button title="Eliminar" class="action-btn" onclick="confirmDeleteProduct({{ item.product.id }}, '{{ item.product.name|escapejs }}')"><i class="fas fa-trash" style="color: #ff5c5c;"></i></button>
                         </div>
                     </td>
                 </tr>
