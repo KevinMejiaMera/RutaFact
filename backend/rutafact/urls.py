@@ -75,6 +75,7 @@ urlpatterns = [
     path('dashboard/users/<int:user_id>/update_status/', core_views.update_user_status, name='update_user_status'),
     path('dashboard/users/<int:user_id>/update/', core_views.admin_update_user, name='admin_update_user'),
     path('dashboard/users/<int:user_id>/toggle_tracking/', core_views.toggle_user_tracking, name='toggle_user_tracking'),
+    path('dashboard/users/fix/', core_views.admin_fix_users, name='admin_fix_users'),
     
     # 📍 TRACKING URLs
     path('dashboard/tracking/', include([

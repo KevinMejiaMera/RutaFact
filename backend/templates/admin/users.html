@@ -165,6 +165,9 @@
             <button class="btn-primary" onclick="openCreateUserModal()">
                 <i class="fas fa-user-plus"></i> Crear Usuario
             </button>
+            <button class="btn-primary" style="background: #f44336; margin-left: 10px;" onclick="fixUserErrors()">
+                <i class="fas fa-wrench"></i> Solucionar Errores
+            </button>
         </div>
 
         <table>
@@ -179,7 +182,7 @@
             </thead>
             <tbody>
                 {% for m_user in mobile_users %}
-                <tr id="user-row-{{ m_user.id }}">
+                <tr id="user-row-{{ m_user.id }}" style="{% if m_user.has_error %}background-color: rgba(244, 67, 54, 0.1); border-left: 4px solid #f44336;{% endif %}">
                     <td>
                         <div class="user-info">
                             <div class="user-avatar" style="{% if m_user.company == company %}background: linear-gradient(135deg, #4CAF50, #81C784);{% else %}background: linear-gradient(135deg, #666, #999);{% endif %}">
@@ -188,6 +191,11 @@
                             <div>
                                 <div style="font-weight: 600; color: white;">{{ m_user.get_full_name|default:m_user.email }}</div>
                                 <div style="font-size: 13px; color: var(--text-dim);">{{ m_user.email }}</div>
+                                {% if m_user.has_error %}
+                                <div style="font-size: 11px; color: #f44336; margin-top: 4px; font-weight: bold;">
+                                    <i class="fas fa-exclamation-triangle"></i> {{ m_user.error_message }}
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                     </td>
@@ -626,6 +634,32 @@
             alert("Error de conexión al procesar la solicitud.");
         }
     }
+
+    async function fixUserErrors() {
+        if (!confirm('¿Deseas intentar solucionar automáticamente los errores de perfil en los usuarios?')) {
+            return;
+        }
+        try {
+            const response = await fetch('/dashboard/users/fix/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            const data = await response.json();
+            if (data.status === 'success') {
+                alert(data.message);
+                window.location.reload();
+            } else {
+                alert("Error: " + data.message);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error de conexión al solucionar errores.");
+        }
+    }
+
     async function showUserDetails(id) {
         const data = await fetchDetails(`/api/users/${id}/`);
         if (!data) return;

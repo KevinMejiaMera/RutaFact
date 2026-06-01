@@ -295,13 +295,63 @@ def admin_users_view(request):
     
     # Traemos a TODOS los usuarios del sistema con su perfil de cliente asociado
     all_users = User.objects.all().select_related('customer_profile').order_by('email')
+    
+    # Detectar errores en perfiles de cliente
+    for u in all_users:
+        u.has_error = False
+        if not hasattr(u, 'customer_profile') or not u.customer_profile:
+            u.has_error = True
+            u.error_message = "Falta Perfil de Cliente"
+        elif u.customer_profile.identification == '9999999999':
+            u.has_error = True
+            u.error_message = "ID de Consumidor Final (Conflicto)"
 
     context = {
         'company': company,
-        'mobile_users': all_users, # Ahora enviamos a todos
+        'mobile_users': all_users,
         'user': request.user,
     }
     return render(request, 'admin/users.html', context)
+
+@login_required
+@user_passes_test(is_admin)
+def admin_fix_users(request):
+    """Corrige automáticamente problemas de perfiles de clientes"""
+    if request.method == 'POST':
+        from apps.invoicing.models import Customer
+        companies = get_user_companies_secure(request.user)
+        company = companies.first()
+        
+        all_users = User.objects.all()
+        fixed = 0
+        for u in all_users:
+            needs_fix = False
+            if not hasattr(u, 'customer_profile') or not u.customer_profile:
+                needs_fix = True
+            elif u.customer_profile.identification == '9999999999':
+                needs_fix = True
+                
+            if needs_fix:
+                try:
+                    customer, created = Customer.objects.get_or_create(
+                        user=u,
+                        defaults={
+                            'company': u.company or company,
+                            'name': f"{u.first_name} {u.last_name}".strip() or u.email,
+                            'identification': f"999{u.id:07d}",
+                            'identification_type': '05',
+                            'email': u.email
+                        }
+                    )
+                    if not created and customer.identification == '9999999999':
+                        customer.identification = f"999{u.id:07d}"
+                        customer.save()
+                    fixed += 1
+                except Exception as e:
+                    logger.error(f"Error fixing user {u.email}: {e}")
+                
+        return JsonResponse({'status': 'success', 'message': f'Se corrigieron {fixed} usuarios con errores.'})
+    return JsonResponse({'status': 'error', 'message': 'Invalid method'})
 
 @login_required
 @user_passes_test(is_admin)
