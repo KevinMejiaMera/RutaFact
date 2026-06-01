@@ -57,7 +57,80 @@
         <i class="fas fa-exclamation-triangle" style="font-size: 50px; color: var(--accent); margin-bottom: 20px;"></i>
         <h3>¡Atención! No hay una Matriz configurada</h3>
         <p style="color: var(--text-dim); margin-bottom: 25px;">Debes crear la empresa matriz en el sistema para empezar a facturar.</p>
-        <a href="/admin/companies/company/add/" class="btn-primary" style="padding: 15px 30px; text-decoration: none; display: inline-block;">CREAR EMPRESA MATRIZ EN ADMIN</a>
+        <button class="btn-primary" style="padding: 15px 30px;" onclick="openCreateCompanyModal()">CREAR EMPRESA MATRIZ</button>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Modal para Crear Empresa -->
+<div id="createCompanyModal" class="modal">
+    <div class="modal-content" style="max-width: 400px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0;">Crear Empresa Matriz</h3>
+            <i class="fas fa-times close-modal" onclick="closeCreateCompanyModal()" style="cursor: pointer; color: var(--text-dim);"></i>
+        </div>
+        <form id="createCompanyForm">
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; font-weight: bold;">Razón Social</label>
+                <input type="text" id="new_business_name" class="form-control" placeholder="Ej: Mi Empresa S.A." required style="width: 100%; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-main);">
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; font-weight: bold;">RUC</label>
+                <input type="text" id="new_ruc" class="form-control" placeholder="Ej: 0999999999001" required maxlength="13" style="width: 100%; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-main);">
+            </div>
+            <button type="submit" class="btn-primary" style="width: 100%; justify-content: center;" id="btnSubmitCompany">Guardar y Continuar</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    function openCreateCompanyModal() {
+        document.getElementById('createCompanyModal').style.display = 'flex';
+    }
+    
+    function closeCreateCompanyModal() {
+        document.getElementById('createCompanyModal').style.display = 'none';
+    }
+
+    document.getElementById('createCompanyForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnSubmitCompany');
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+        btn.disabled = true;
+
+        const data = {
+            business_name: document.getElementById('new_business_name').value,
+            ruc: document.getElementById('new_ruc').value,
+            trade_name: document.getElementById('new_business_name').value,
+            is_active: true
+        };
+
+        try {
+            const response = await fetch('/companies/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                // Recargar para que desaparezca el botón y muestre la empresa
+                window.location.reload();
+            } else {
+                const err = await response.json();
+                alert('Error al crear la empresa: ' + JSON.stringify(err));
+                btn.innerHTML = 'Guardar y Continuar';
+                btn.disabled = false;
+            }
+        } catch (error) {
+            alert('Error de conexión');
+            btn.innerHTML = 'Guardar y Continuar';
+            btn.disabled = false;
+        }
+    });
+</script>
     </div>
     {% endfor %}
 </div>
