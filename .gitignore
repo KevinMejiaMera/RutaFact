@@ -185,6 +185,8 @@ dmypy.json
 # Docker volumes y datos
 docker-compose.override.yml
 .docker/
+nginx_data/
+nginx_letsencrypt/
 
 # =============================================================================
 # EDITORES E IDEs
