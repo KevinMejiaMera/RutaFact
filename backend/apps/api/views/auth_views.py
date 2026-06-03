@@ -45,7 +45,7 @@ def token_login(request):
         }
     }
     """
-    email = request.data.get('email', '').strip()
+    email = request.data.get('email', '').strip().lower()
     password = request.data.get('password')
     
     if not email or not password:

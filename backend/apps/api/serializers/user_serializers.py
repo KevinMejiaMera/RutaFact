@@ -6,14 +6,16 @@ User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.ReadOnlyField(source='get_full_name')
+    company_name = serializers.CharField(source='company.business_name', read_only=True)
     
     class Meta:
         model = User
         fields = [
             'id', 'email', 'first_name', 'last_name', 'full_name', 
-            'role', 'user_status', 'phone', 'is_active', 'company'
+            'role', 'user_status', 'phone', 'is_active', 'company', 'company_name',
+            'date_joined', 'last_login'
         ]
-        read_only_fields = ['id', 'email']
+        read_only_fields = ['id', 'email', 'date_joined', 'last_login']
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:

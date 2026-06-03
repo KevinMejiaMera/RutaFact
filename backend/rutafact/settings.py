@@ -390,7 +390,6 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
     'x-api-key',
     'x-auth-token',
-    'ngrok-skip-browser-warning',
 ]
 
 # ==========================================
