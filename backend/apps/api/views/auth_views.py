@@ -172,7 +172,12 @@ def token_logout(request):
     Logout - invalida token actual
     """
     if hasattr(request, 'auth') and request.auth:
-        request.auth.delete()
+        # Check if auth object has delete method (DRF Token)
+        if hasattr(request.auth, 'delete'):
+            request.auth.delete()
+        # For JWT tokens, they are stateless, so we just return success
+        # (Client is responsible for deleting the token from local storage)
+        
         return Response({
             'success': True,
             'message': 'Logged out successfully'
